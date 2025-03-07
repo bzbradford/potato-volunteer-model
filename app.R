@@ -6,6 +6,7 @@ library(leaflet.extras)
 library(shiny)
 library(bslib)
 
+# shiny::devmode(TRUE)
 
 ui <- page_fillable(
   title = "Potato volunteer risk map",
@@ -25,17 +26,13 @@ ui <- page_fillable(
     layout_columns(
       gap = "1rem",
       card(
-        min_height = "600px",
-        max_height = "100vw",
         card_header("Risk map"),
         card_body(
           padding = 0,
-          leafletOutput("map", height = "100%")
+          leafletOutput("map", height = "50vh")
         )
       ),
       card(
-        min_height = "600px",
-        max_height = "100vw",
         card_header("Soil temperature"),
         card_body(
           padding = 10,
@@ -60,6 +57,7 @@ server <- function(input, output) {
     selected_stn = "HNCK"
   )
 
+  # info button
   observe({
     mod <- modalDialog(
       includeMarkdown("README.md"),
@@ -70,13 +68,19 @@ server <- function(input, output) {
     showModal(mod)
   }) %>% bindEvent(input$info)
 
+  # render map
   output$map <- renderLeaflet({
     volunteer_risk %>%
       leaflet() %>%
       addProviderTiles(providers$OpenStreetMap, group = "OpenStreetMap") %>%
       addProviderTiles(providers$Esri.WorldImagery, group = "Satellite") %>%
       addLayersControl(baseGroups = c("OpenStreetMap", "Satellite")) %>%
-      addResetMapButton() %>%
+      addEasyButtonBar(easyButton(
+        position = "topleft",
+        icon = "fa-expand",
+        title = "Reset map",
+        onClick = JS("(btn, map) => { Shiny.setInputValue('reset_map', true, {priority: 'event'}); }")
+      )) %>%
       addPolygons(
         data = wi_counties,
         color = "black",
@@ -98,10 +102,23 @@ server <- function(input, output) {
       )
   })
 
+  # handle zoom button
+  observe({
+    leafletProxy("map") %>%
+      fitBounds(
+        lat1 = min(stns$latitude),
+        lat2 = max(stns$latitude),
+        lng1 = min(stns$longitude),
+        lng2 = max(stns$longitude)
+      )
+  }) %>% bindEvent(input$reset_map)
+
+  # handle marker click
   observe({
     rv$selected_stn <- req(input$map_marker_click$id)
   })
 
+  # show selected site
   observe({
     id <- req(rv$selected_stn)
     stn <- volunteer_risk %>% filter(station_id == id)
@@ -118,6 +135,7 @@ server <- function(input, output) {
       )
   })
 
+  # render plot
   output$plot <- renderPlot({
     id <- req(rv$selected_stn)
     stn <- stns %>% filter(station_id == id)

@@ -1,0 +1,13 @@
+name: potato_volunteer_risk_map
+title: Potato volunteer risk map
+username: bbradford
+account: bbradford
+server: connect.doit.wisc.edu
+hostUrl: https://connect.doit.wisc.edu/__api__
+appId: 439
+bundleId: 3356
+url: https://connect.doit.wisc.edu/content/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: data/soil_temps_hourly_2024.11.01_2025.03.06.csv.gz|data/wi-county-bounds-24k.zip|get_wisconet.R|volunteers.R|plots|rosm.cache
