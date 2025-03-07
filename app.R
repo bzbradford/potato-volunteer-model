@@ -48,7 +48,8 @@ ui <- page_fillable(
   tags$footer(
     div(
       style = "text-align: right; font-style: italic; font-size: small; padding: 0 1rem 1rem 1rem; color: grey;",
-      HTML("Developed by <a href='https://entomology.wisc.edu/directory/ben-bradford/' target='_blank'>Ben Bradford</a>, UW-Madison Entomology<br>")
+      HTML("Developed by <a href='https://entomology.wisc.edu/directory/ben-bradford/' target='_blank'>Ben Bradford</a>, UW-Madison Entomology<br>"),
+      HTML("<a href='https://github.com/bzbradford/potato-volunteer-model' target='_blank'>View source code</a>"),
     )
   )
 )
