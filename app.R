@@ -57,6 +57,11 @@ server <- function(input, output) {
     selected_stn = "HNCK"
   )
 
+  selected_stn <- reactive({
+    id <- req(rv$selected_stn)
+    volunteer_risk %>% filter(station_id == id)
+  })
+
   # info button
   observe({
     mod <- modalDialog(
@@ -70,17 +75,25 @@ server <- function(input, output) {
 
   # render map
   output$map <- renderLeaflet({
+    btn1 <- easyButton(
+      position = "topleft",
+      icon = "fa-location-pin",
+      title = "Zoom to station",
+      onClick = JS("(btn, map) => { Shiny.setInputValue('map_btn', 'zoom', {priority: 'event'}); }")
+    )
+    btn2 <- easyButton(
+      position = "topleft",
+      icon = "fa-expand",
+      title = "Reset map",
+      onClick = JS("(btn, map) => { Shiny.setInputValue('map_btn', 'reset', {priority: 'event'}); }")
+    )
+
     volunteer_risk %>%
       leaflet() %>%
       addProviderTiles(providers$OpenStreetMap, group = "OpenStreetMap") %>%
       addProviderTiles(providers$Esri.WorldImagery, group = "Satellite") %>%
       addLayersControl(baseGroups = c("OpenStreetMap", "Satellite")) %>%
-      addEasyButtonBar(easyButton(
-        position = "topleft",
-        icon = "fa-expand",
-        title = "Reset map",
-        onClick = JS("(btn, map) => { Shiny.setInputValue('reset_map', true, {priority: 'event'}); }")
-      )) %>%
+      addEasyButtonBar(btn1, btn2) %>%
       addPolygons(
         data = wi_counties,
         color = "black",
@@ -104,14 +117,25 @@ server <- function(input, output) {
 
   # handle zoom button
   observe({
-    leafletProxy("map") %>%
-      fitBounds(
-        lat1 = min(stns$latitude),
-        lat2 = max(stns$latitude),
-        lng1 = min(stns$longitude),
-        lng2 = max(stns$longitude)
-      )
-  }) %>% bindEvent(input$reset_map)
+    action <- req(input$map_btn)
+    switch(action,
+      "zoom" = {
+        stn <- selected_stn()
+        leafletProxy("map") %>%
+          setView(lat = stn$latitude, lng = stn$longitude, zoom = 12)
+      },
+      "reset" = {
+        leafletProxy("map") %>%
+          fitBounds(
+            lat1 = min(stns$latitude),
+            lat2 = max(stns$latitude),
+            lng1 = min(stns$longitude),
+            lng2 = max(stns$longitude)
+          )
+      }
+    )
+
+  })
 
   # handle marker click
   observe({
@@ -120,8 +144,7 @@ server <- function(input, output) {
 
   # show selected site
   observe({
-    id <- req(rv$selected_stn)
-    stn <- volunteer_risk %>% filter(station_id == id)
+    stn <- selected_stn()
     leafletProxy("map") %>%
       addCircleMarkers(
         data = stn,
