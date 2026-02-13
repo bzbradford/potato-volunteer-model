@@ -13,17 +13,21 @@ server <- function(input, output) {
       filter(season == s)
   })
 
-  avail_stns <- reactive({
+  avail_ids <- reactive({
     data <- season_data()
-    stns <- unique(data$station_id)
-    if (!(rv$selected_stn %in% stns)) {
-      rv$selected_stn <- sample(stns, 1)
+    avail_ids <- unique(data$station_id)
+    cur_id <- rv$selected_stn
+    if (!(cur_id %in% avail_ids)) {
+      avail_stns <- stns |> filter(station_id %in% avail_ids)
+      cur_stn <- stns |> filter(station_id == cur_id)
+      closest <- find_closest(cur_stn$latitude, cur_stn$longitude, avail_stns)
+      rv$selected_stn <- closest$station_id
     }
-    stns
+    avail_ids
   })
 
   stn_data <- reactive({
-    stns <- avail_stns() # just to trigger invalidation on change
+    stns <- avail_ids() # just to trigger invalidation on change
     stn <- rv$selected_stn
     season_data() |>
       filter(station_id == rv$selected_stn)
@@ -36,13 +40,16 @@ server <- function(input, output) {
       filter(season == s)
   })
 
-  selected_stn <- reactive({
-    season_risk() |>
+  selected_stn_risk <- reactive({
+    stn <- season_risk() |>
       filter(station_id == rv$selected_stn)
+    req(nrow(stn) > 0)
+    stn
   })
 
+  # UI ----
   output$stn_name <- renderUI({
-    stn <- selected_stn()
+    stn <- selected_stn_risk()
     div(
       style = "display: inline-flex; gap: 10px; align-items: flex-end;",
       strong(sprintf(
@@ -57,11 +64,31 @@ server <- function(input, output) {
     )
   })
 
-  # Show modal ----
+  output$stn_risk <- renderUI({
+    stn <- selected_stn_risk()
+    colorize <- function(val) {
+      color <- if (val >= 120) "blue" else "red"
+      sprintf('<span style="color: %s">%s</span>', color, val)
+    }
+    HTML(paste0(
+      '<strong>- </strong>',
+      '<span style="font-size: smaller">',
+      'Killing hours @2in: ',
+      colorize(stn$killing2),
+      ' - @4in: ',
+      colorize(stn$killing4),
+      ' - @8in: ',
+      colorize(stn$killing8),
+      '. Tuber survival likelihood: ',
+      stn$risk,
+      '</span>'
+    ))
+  })
 
+  # Show modal ----
   observe({
     mod <- modalDialog(
-      includeMarkdown("README.md"),
+      includeMarkdown("about.md"),
       footer = modalButton("Close"),
       easyClose = TRUE,
       size = "l"
@@ -71,7 +98,6 @@ server <- function(input, output) {
     bindEvent(input$info)
 
   # Map ----
-
   output$map <- renderLeaflet({
     isolate(season_risk()) |>
       build_risk_map()
@@ -91,7 +117,7 @@ server <- function(input, output) {
     switch(
       action,
       "zoom" = {
-        stn <- selected_stn()
+        stn <- selected_stn_risk()
         leafletProxy("map") |>
           setView(lat = stn$latitude, lng = stn$longitude, zoom = 12)
       },
@@ -114,7 +140,7 @@ server <- function(input, output) {
 
   # show selected site
   observe({
-    stn <- selected_stn()
+    stn <- selected_stn_risk()
     leafletProxy("map") |>
       addCircleMarkers(
         data = stn,
@@ -128,10 +154,13 @@ server <- function(input, output) {
       )
   })
 
-  # render plot
+  # Plots ----
   output$soil_plot <- renderPlotly({
     stn_id <- req(rv$selected_stn)
-    build_plotly(stn_data(), stn_id)
+    # build_plotly(stn_data(), stn_id)
+    stn_data() |>
+      filter(depth > 0) |>
+      build_plot()
   })
 
   output$air_plot <- renderPlotly({

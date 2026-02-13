@@ -23,47 +23,68 @@ suppressPackageStartupMessages({
 # Load data ----
 
 wi_counties <- read_sf("data/wi-county-bounds-24k.geojson")
-stns <- readRDS("data/stns.rds")
-select_measures <- readRDS("data/measures.rds")
-hourly_data <- read_fst("data/hourly_data.fst") |> as_tibble()
 
+stns <- readRDS("data/stns.rds")
+
+hourly_data <- read_fst("data/hourly_data.fst") |>
+  as_tibble() |>
+  mutate(across(where(is.character), factor))
+
+measures <- hourly_data |>
+  distinct(standard_name, measure_name, type, depth) %>%
+  arrange(depth)
+
+OPTS <- list(
+  season_choices = levels(hourly_data$season)
+)
+
+
+# Helpers ----
+
+find_closest <- function(lat, lon, df = stns) {
+  dists <- (df$latitude - lat)^2 + (df$longitude - lon)^2
+  df[which.min(dists), ]
+}
+# find_closest(45, -89)
+
+# Calculate volunteer risk -----------------------------------------------------
 #' Potato volunteer survival model
 #' Soil temperatures must be below 27F for 120 hours
 #' High risk: 2in & 4in < 120 hours
 #' Moderate risk: 2in > 120 hours, 4in < 120 hours
 #' Low risk 2in & 4in > 120 hours
 
-volunteer_risk <- hourly_data %>%
-  summarize(
-    killing = sum(killing, na.rm = TRUE),
-    .by = c(station_id, station_name, latitude, longitude, season, depth)
-  ) %>%
-  complete(
-    nesting(season, station_id, station_name, latitude, longitude),
-    depth,
-    fill = list(killing = 0)
-  ) %>%
-  pivot_wider(
-    names_from = depth,
-    names_glue = "killing{.name}",
-    values_from = killing
-  ) %>%
-  mutate(
-    risk_score = (killing2 >= 120) + (killing4 >= 120),
-    risk = case_match(
-      risk_score,
-      0 ~ "High",
-      1 ~ "Moderate",
-      2 ~ "Low"
-    ) %>%
-      factor(levels = c("High", "Moderate", "Low"))
-  ) %>%
-  arrange(season, station_id)
+calc_vol_risk <- function(data) {
+  data |>
+    summarize(
+      killing = sum(killing, na.rm = TRUE),
+      .by = c(station_id, station_name, latitude, longitude, season, depth)
+    ) |>
+    complete(
+      nesting(season, station_id, station_name, latitude, longitude),
+      depth,
+      fill = list(killing = 0)
+    ) |>
+    pivot_wider(
+      names_from = depth,
+      names_glue = "killing{.name}",
+      values_from = killing
+    ) |>
+    mutate(
+      risk_score = (killing2 >= 120) + (killing4 >= 120) + (killing8 >= 120),
+      risk = case_match(
+        risk_score,
+        0 ~ "Very high",
+        1 ~ "High",
+        2 ~ "Moderate",
+        3 ~ "Low"
+      ) |>
+        factor(levels = c("Very high", "High", "Moderate", "Low"))
+    ) |>
+    arrange(season, station_id)
+}
 
-
-OPTS <- list(
-  season_choices = levels(hourly_data$season)
-)
+volunteer_risk <- calc_vol_risk(hourly_data)
 
 
 # Map --------------------------------------------------------------------------
@@ -123,11 +144,11 @@ add_risk_markers <- function(map, data = getMapData(map)) {
 }
 
 if (FALSE) {
-  volunteer_risk %>%
-    filter(season == "2025-2026") %>%
+  volunteer_risk |>
+    filter(season == "2025-2026") |>
     build_risk_map()
 
-  hourly_data %>%
+  hourly_data |>
     filter(station_id == "KNGT")
 }
 
@@ -136,13 +157,20 @@ if (FALSE) {
 
 ## Single plot ----
 
-expand_range <- function(lo, hi, amt = .05) {
-  c(lo - abs(hi - lo) * amt, hi + abs(hi - lo) * amt)
-}
-
-# plotly
 build_plot <- function(data) {
   require(plotly)
+  require(dplyr)
+
+  expand_range <- function(lo, hi, amt = .05) {
+    c(lo - abs(hi - lo) * amt, hi + abs(hi - lo) * amt)
+  }
+
+  # Color palettes: each element is c(light_hourly, dark_rolling_mean)
+  color_palettes <- list(
+    c("rgba(100,149,237,0.6)", "rgba(30,60,150,0.9)"), # blue (cornflower / dark blue)
+    c("rgba(80,180,80,0.6)", "rgba(20,110,20,0.9)"), # green
+    c("rgba(230,130,60,0.6)", "rgba(180,60,10,0.9)") # orange
+  )
 
   yrange <- if (nrow(data) == 0) {
     c(0, 100)
@@ -153,6 +181,7 @@ build_plot <- function(data) {
     )
   }
 
+  # Compute rolling mean per measure
   data <- data |>
     arrange(dttm) |>
     mutate(
@@ -165,24 +194,42 @@ build_plot <- function(data) {
       .by = c(station_id, standard_name)
     )
 
-  plot_ly(data, x = ~dttm_local) %>%
-    add_lines(
-      y = ~measure_value,
-      line = list(color = "steelblue", width = 1),
-      name = "Hourly temp",
-      showlegend = FALSE,
-      hovertemplate = "%{y:.1f}°F"
-    ) %>%
-    add_lines(
-      y = ~rolling_mean,
-      line = list(color = "black", width = 2),
-      opacity = 0.5,
-      name = "24-hr mean",
-      showlegend = FALSE,
-      hovertemplate = "%{y:.1f}°F"
-    ) %>%
+  measures <- levels(data$measure_name)
+  # show_legend <- length(measures) > 1
+  show_legend <- FALSE
+
+  p <- plot_ly(x = ~dttm_local)
+
+  for (i in seq_along(measures)) {
+    m <- measures[i]
+    d <- filter(data, measure_name == m)
+    colors <- color_palettes[[(i - 1) %% length(color_palettes) + 1]]
+
+    p <- p |>
+      add_lines(
+        data = d,
+        y = ~measure_value,
+        line = list(color = colors[1], width = 1),
+        name = paste(m, "(hourly)"),
+        legendgroup = m,
+        showlegend = show_legend,
+        hovertemplate = "%{y:.1f}°F"
+      ) |>
+      add_lines(
+        data = d,
+        y = ~rolling_mean,
+        line = list(color = colors[2], width = 2),
+        name = paste(m, "(24-hr)"),
+        legendgroup = m,
+        showlegend = show_legend,
+        hovertemplate = "%{y:.1f}°F"
+      )
+  }
+
+  p |>
     layout(
-      margin = list(t = 10, r = 10, b = 10, l = 10),
+      # margin = list(t = 10, r = 10, b = 10, l = 10),
+      margin = list(t = 0, r = 0, b = 0, l = 0),
       hovermode = "x unified",
       xaxis = list(
         title = NA,
@@ -278,77 +325,79 @@ build_plot <- function(data) {
 }
 
 if (FALSE) {
-  hourly_data %>%
-    filter(station_id == "HNCK", depth == 2) %>%
+  hourly_data |>
+    filter(station_id == "HNCK", depth == 2) |>
     build_plot()
 
-  hourly_data %>%
-    filter(station_id == "HNCK", depth == 0) %>%
+  hourly_data |>
+    filter(station_id == "HNCK", depth == 0) |>
+    build_plot()
+
+  hourly_data |>
+    filter(station_id == "HNCK", depth > 0) |>
     build_plot()
 }
-
 
 ## Stacked plot ----
-
-build_plotly <- function(data, stn_id) {
-  stn <- stns %>% filter(station_id == stn_id)
-  risk <- volunteer_risk %>% filter(station_id == stn_id)
-  stn_data <- data %>% filter(station_id == stn_id)
-  measures <- select_measures
-
-  killing_hrs <- stn_data %>%
-    filter(depth > 0) %>%
-    summarize(hrs = sum(measure_value < 27, na.rm = TRUE), .by = measure_name)
-
-  p1 <- stn_data |>
-    filter(depth == 2) |>
-    build_plot()
-  p2 <- stn_data |>
-    filter(depth == 4) |>
-    build_plot()
-
-  subplot(p1, p2, nrows = 2, shareX = TRUE, titleY = TRUE) %>%
-    layout(
-      margin = list(t = 20, r = 10, b = 10, l = 10),
-      annotations = list(
-        # subplot 1 title
-        list(
-          text = paste0(
-            "<b>2-inch soil temperature</b> - ",
-            killing_hrs$hrs[1],
-            " hrs below 27°F"
-          ),
-          x = 0.5,
-          y = 1.0,
-          xref = "paper",
-          yref = "paper",
-          showarrow = FALSE,
-          font = list(size = 11),
-          xanchor = "center",
-          yanchor = "bottom"
-        ),
-        # subplot 2 title
-        list(
-          text = paste0(
-            "<b>4-inch soil temperature</b> - ",
-            killing_hrs$hrs[2],
-            " hrs below 27°F"
-          ),
-          x = 0.5,
-          y = 0.48,
-          xref = "paper",
-          yref = "paper",
-          showarrow = FALSE,
-          font = list(size = 11),
-          xanchor = "center",
-          yanchor = "bottom"
-        )
-      )
-    )
-}
-
-if (FALSE) {
-  hourly_data %>%
-    filter(season == "2025-2026") %>%
-    build_plotly("ANGO")
-}
+#
+# build_plotly <- function(data, stn_id) {
+#   stn <- stns |> filter(station_id == stn_id)
+#   risk <- volunteer_risk |> filter(station_id == stn_id)
+#   stn_data <- data |> filter(station_id == stn_id)
+#
+#   killing_hrs <- stn_data |>
+#     filter(depth > 0) |>
+#     summarize(hrs = sum(measure_value < 27, na.rm = TRUE), .by = measure_name)
+#
+#   p1 <- stn_data |>
+#     filter(depth == 2) |>
+#     build_plot()
+#   p2 <- stn_data |>
+#     filter(depth == 4) |>
+#     build_plot()
+#
+#   subplot(p1, p2, nrows = 2, shareX = TRUE, titleY = TRUE) |>
+#     layout(
+#       # margin = list(t = 20, r = 10, b = 10, l = 10),
+#       annotations = list(
+#         # subplot 1 title
+#         list(
+#           text = paste0(
+#             "<b>2-inch soil temperature</b> - ",
+#             killing_hrs$hrs[1],
+#             " hrs below 27°F"
+#           ),
+#           x = 0.5,
+#           y = 1.0,
+#           xref = "paper",
+#           yref = "paper",
+#           showarrow = FALSE,
+#           font = list(size = 11),
+#           xanchor = "center",
+#           yanchor = "bottom"
+#         ),
+#         # subplot 2 title
+#         list(
+#           text = paste0(
+#             "<b>4-inch soil temperature</b> - ",
+#             killing_hrs$hrs[2],
+#             " hrs below 27°F"
+#           ),
+#           x = 0.5,
+#           y = 0.48,
+#           xref = "paper",
+#           yref = "paper",
+#           showarrow = FALSE,
+#           font = list(size = 11),
+#           xanchor = "center",
+#           yanchor = "bottom"
+#         )
+#       )
+#     )
+# }
+#
+# if (FALSE) {
+#   hourly_data |>
+#     filter(season == "2025-2026") |>
+#     build_plotly("ANGO")
+# }

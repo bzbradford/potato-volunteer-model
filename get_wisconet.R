@@ -1,6 +1,7 @@
 library(tidyverse)
 library(leaflet)
 library(httr2)
+library(fst)
 
 # API ---------------------------------------------------------------------
 
@@ -157,13 +158,14 @@ get_measures_all_stns <- function(fields, start_time, end_time = now()) {
 
 # Get data ---------------------------------------------------------------------
 
-all_fields %>% filter(collection_frequency == "daily") %>% pull(standard_name)
+all_fields %>% filter(str_detect(standard_name, "soil")) %>% pull(standard_name)
 
 select_measures <- tribble(
-  ~standard_name              , ~measure_name             , ~type  , ~depth ,
-  "60min_air_temp_f_avg"      , "Air temperature"         , "air"  ,      0 ,
-  "60min_soil_temp_f_avg@2in" , "2-inch soil temperature" , "soil" ,      2 ,
-  "60min_soil_temp_f_avg@4in" , "4-inch soil temperature" , "soil" ,      4 ,
+  ~standard_name              , ~measure_name     , ~type  , ~depth ,
+  "60min_air_temp_f_avg"      , "Air temperature" , "air"  ,      0 ,
+  "60min_soil_temp_f_avg@2in" , "2in soil temp"   , "soil" ,      2 ,
+  "60min_soil_temp_f_avg@4in" , "4in soil temp"   , "soil" ,      4 ,
+  "60min_soil_temp_f_avg@8in" , "8in soil temp"   , "soil" ,      8 ,
 )
 
 # get all new data?
@@ -174,23 +176,24 @@ select_measures <- tribble(
 # )
 
 # load existing data
-wn_data <- readRDS("data/air_soil_temps_hourly_2024-01-01_2026-02-12.rds")
+wn_data <- read_fst("data/wn_data_2023-11-01_2026-02-13.fst")
 
 # get new data
 if (FALSE) {
+  # get all measures
   wn_data_new <- get_measures_all_stns(
     fields = select_measures$standard_name,
-    start_time = max(wn_data$dttm_local),
+    start_time = ymd_hms("2026-02-11 0:0:0"),
     end_time = now()
   )
 
+  # get one measure
   wn_data_new <- get_measures_all_stns(
-    # stn_id = "HNCK",
-    fields = select_measures$standard_name,
-    start_time = ymd_hms("2023-1-1 0:0:0"),
-    end_time = ymd_hms("2023-12-31 23:0:0")
+    fields = "60min_soil_temp_f_avg@8in",
+    start_time = ymd_hms("2023-1-1 0:0:0")
   )
 
+  # get one station
   wn_data_new <- get_measures(
     stn_id = "ANGO",
     fields = select_measures$standard_name,
@@ -206,18 +209,26 @@ if (FALSE) {
     filter(measure_value > -50)
 
   # save it
-  saveRDS(
-    wn_data,
-    sprintf(
-      "data/air_soil_temps_hourly_%s_%s.rds",
-      format(first(wn_data$dttm_local), "%Y-%m-%d"),
-      format(last(wn_data$dttm_local), "%Y-%m-%d")
+  local({
+    df <- wn_data
+    fname <- sprintf(
+      "data/wn_data_%s_%s.fst",
+      format(first(df$dttm_local), "%Y-%m-%d"),
+      format(last(df$dttm_local), "%Y-%m-%d")
     )
-  )
+    message(
+      "Saving to '",
+      fname,
+      "' (",
+      format(nrow(df), big.mark = ","),
+      " rows)"
+    )
+    write_fst(wn_data, fname, compress = 99)
+  })
 
   # test plot
   wn_data %>%
-    filter(station_id == "KNGT") %>%
+    filter(station_id == "HNCK") %>%
     ggplot(aes(x = dttm_local, y = measure_value, color = station_id)) +
     geom_line(lwd = .25) +
     facet_wrap(~standard_name, ncol = 1) +
