@@ -1,4 +1,3 @@
-
 library(tidyverse)
 library(leaflet)
 library(sf)
@@ -9,7 +8,6 @@ library(sf)
 #' Moderate risk: 2in > 120 hours, 4in < 120 hours
 #' Low risk 2in & 4in > 120 hours
 
-
 wi_counties <- unzip("data/wi-county-bounds-24k.zip") %>% read_sf()
 
 soil_measures <- tibble(
@@ -18,10 +16,13 @@ soil_measures <- tibble(
   depth = c(2, 4)
 )
 
-soiltemp <- read_csv("data/soil_temps_hourly_2024.11.01_2025.03.06.csv.gz") %>%
+soiltemp <- read_csv("data/soil_temps_hourly_2024-11-01_2025-03-19.csv.gz") %>%
   mutate(dttm_local = with_tz(dttm, "America/Chicago")) %>%
   mutate(freezing = measure_value < 32, killing = measure_value < 27) %>%
-  mutate(rolling_mean = zoo::rollapply(measure_value, 24, mean, partial = TRUE), .by = c(station_id, standard_name)) %>%
+  mutate(
+    rolling_mean = zoo::rollapply(measure_value, 24, mean, partial = TRUE),
+    .by = c(station_id, standard_name)
+  ) %>%
   left_join(soil_measures)
 
 volunteer_risk <- soiltemp %>%
@@ -29,11 +30,20 @@ volunteer_risk <- soiltemp %>%
     killing = sum(killing),
     .by = c(station_id, station_name, latitude, longitude, depth)
   ) %>%
-  pivot_wider(names_from = depth, names_glue = "killing{.name}", values_from = killing) %>%
-  mutate(risk = case_match(
-    (killing2 >= 120) + (killing4 >= 120),
-    0 ~ "High", 1 ~ "Moderate", 2 ~ "Low"
-  ) %>% factor(levels = c("High", "Moderate", "Low"))) %>%
+  pivot_wider(
+    names_from = depth,
+    names_glue = "killing{.name}",
+    values_from = killing
+  ) %>%
+  mutate(
+    risk = case_match(
+      (killing2 >= 120) + (killing4 >= 120),
+      0 ~ "High",
+      1 ~ "Moderate",
+      2 ~ "Low"
+    ) %>%
+      factor(levels = c("High", "Moderate", "Low"))
+  ) %>%
   arrange(killing4)
 
 stns <- soiltemp %>%
@@ -58,17 +68,18 @@ volunteer_risk %>%
     weight = .25,
     fillColor = "white",
     fillOpacity = .0001,
-    label = ~paste(county_name, "County")
+    label = ~ paste(county_name, "County")
   ) %>%
   addCircleMarkers(
     lat = ~latitude,
     lng = ~longitude,
     layerId = ~station_id,
-    label = ~str_glue("<b>{station_name}</b><br>Risk: {risk}") %>% lapply(HTML),
+    label = ~ str_glue("<b>{station_name}</b><br>Risk: {risk}") %>%
+      lapply(shiny::HTML),
     color = "black",
     weight = 1,
     opacity = 1,
-    fillColor = ~colorFactor("viridis", risk, reverse = TRUE)(risk),
+    fillColor = ~ colorFactor("viridis", risk, reverse = TRUE)(risk),
     fillOpacity = 1
   )
 
@@ -91,7 +102,7 @@ ggplot() +
     legend.background = element_rect(fill = "white", color = "black"),
     legend.margin = margin(5, 5, 5, 5)
   )
-ggsave("plots/Volunteer survival risk map, 2025.png", h = 8, w = 6)
+ggsave("plots/Volunteer survival risk map, 2025.png", h = 7, w = 6)
 
 
 # Soil temp plots ---------------------------------------------------------
@@ -113,18 +124,46 @@ soiltemp %>%
   geom_line(aes(y = rolling_mean), alpha = .5) +
   geom_hline(yintercept = 32, linetype = "dashed") +
   geom_hline(yintercept = 27) +
-  annotate("text", x = as.POSIXct(-Inf, origin = '2024-11-1'), y = 32, label = " Freezing (32F)", hjust = 0, vjust = 1.5, fontface = "italic", size = 3) +
-  annotate("text", x = as.POSIXct(-Inf, origin = '2024-11-1'), y = 27, label = " Minimum for volunteer survival (27F)", hjust = 0, vjust = 1.5, fontface = "italic", size = 3) +
+  annotate(
+    "text",
+    x = as.POSIXct(-Inf, origin = '2024-11-1'),
+    y = 32,
+    label = " Freezing (32°F)",
+    hjust = 0,
+    vjust = 1.5,
+    fontface = "italic",
+    size = 2.5
+  ) +
+  annotate(
+    "text",
+    x = as.POSIXct(-Inf, origin = '2024-11-1'),
+    y = 27,
+    label = " Minimum for volunteer\n survival (27°F)",
+    hjust = 0,
+    vjust = 1.5,
+    fontface = "italic",
+    size = 2.5
+  ) +
   facet_wrap(~measure_name) +
-  scale_x_datetime(breaks = "months", minor_breaks = NULL, labels = ~format(.x, "%b '%y")) +
-  labs(title = "Hancock soil temperature, winter 2024-2025", x = "Date", y = "Soil temperature (F)") +
-  theme(legend.position = "none")
+  scale_x_datetime(
+    breaks = "months",
+    minor_breaks = NULL,
+    labels = ~ format(.x, "%b '%y")
+  ) +
+  labs(
+    title = "Hancock soil temperature, winter 2024-2025",
+    x = NULL,
+    y = "Soil temperature (°F)"
+  ) +
+  theme(legend.position = "none", strip.text = element_text(size = 10))
+
+ggsave("Hancock soil temperature, winter '24-'25.png", h = 3, w = 8, dpi = 600)
 
 
 ## All stations ----
 
 lapply(1:nrow(stns), function(i) {
-  stn <- stns[i,]
+  stn <- stns[i, ]
   message(stn$station_id)
   temps <- soiltemp %>% filter(station_id == stn$station_id)
   hours <- temps %>%
@@ -139,18 +178,127 @@ lapply(1:nrow(stns), function(i) {
     geom_line(aes(y = rolling_mean), alpha = .5) +
     geom_hline(yintercept = 32, linetype = "dashed") +
     geom_hline(yintercept = 27) +
-    geom_text(data = hours, aes(label = label), x = zerodate, y = Inf, hjust = 0, vjust = 1.5) +
-    annotate("text", x = zerodate, y = 32, label = " Freezing (32°F)", hjust = 0, vjust = 1.5, fontface = "italic", size = 3) +
-    annotate("text", x = zerodate, y = 27, label = " Killing (27°F)", hjust = 0, vjust = 1.5, fontface = "italic", size = 3) +
-    facet_wrap(~measure_name) +
-    scale_x_datetime(breaks = "months", minor_breaks = NULL, labels = ~format(.x, "%b '%y")) +
-    labs(
-      title = paste(stn$station_name, "soil temperature, winter '24-'25. Potato volunteer risk:", risk$risk),
-      x = "Date", y = "Soil temperature (°F)"
+    geom_text(
+      data = hours,
+      aes(label = label),
+      x = zerodate,
+      y = Inf,
+      hjust = 0,
+      vjust = 1.5
     ) +
-    theme(legend.position = "none", strip.text = element_text(size = 12, face = "bold"))
-  pltname <- paste0("plots/", risk$risk, " - ", stn$station_id, " ", stn$station_name, " soil temp and volunteer risk, winter '24-'25.png")
+    annotate(
+      "text",
+      x = zerodate,
+      y = 32,
+      label = " Freezing (32°F)",
+      hjust = 0,
+      vjust = 1.5,
+      fontface = "italic",
+      size = 3
+    ) +
+    annotate(
+      "text",
+      x = zerodate,
+      y = 27,
+      label = " Killing (27°F)",
+      hjust = 0,
+      vjust = 1.5,
+      fontface = "italic",
+      size = 3
+    ) +
+    facet_wrap(~measure_name) +
+    scale_x_datetime(
+      breaks = "months",
+      minor_breaks = NULL,
+      labels = ~ format(.x, "%b '%y")
+    ) +
+    labs(
+      title = paste(
+        stn$station_name,
+        "soil temperature, winter '24-'25. Potato volunteer risk:",
+        risk$risk
+      ),
+      x = "Date",
+      y = "Soil temperature (°F)"
+    ) +
+    theme(
+      legend.position = "none",
+      strip.text = element_text(size = 12, face = "bold")
+    )
+  pltname <- paste0(
+    "plots/",
+    risk$risk,
+    " - ",
+    stn$station_id,
+    " ",
+    stn$station_name,
+    " soil temp and volunteer risk, winter '24-'25.png"
+  )
   ggsave(pltname, plt, h = 5, w = 8, s = 1.25)
   NULL
 })
 
+# ggplot saved from app
+
+# output$plot <- renderPlot({
+#   id <- req(rv$selected_stn)
+#   stn <- stns %>% filter(station_id == id)
+#   temps <- soiltemp %>% filter(station_id == id)
+#   hours <- temps %>%
+#     summarize(hours = sum(measure_value <= 27), .by = measure_name) %>%
+#     mutate(label = paste0(" ", hours, " hours < 27°F"))
+#   risk <- volunteer_risk %>% filter(station_id == id)
+#   zerodate <- as.POSIXct(-Inf, origin = min(temps$dttm))
+#
+#   plt <- temps %>%
+#     ggplot(aes(x = dttm_local, y = measure_value)) +
+#     geom_line(aes(color = !freezing, group = 1), lwd = .5) +
+#     geom_line(aes(y = rolling_mean), alpha = .5) +
+#     geom_hline(yintercept = 32, linetype = "dashed") +
+#     geom_hline(yintercept = 27) +
+#     geom_text(
+#       data = hours,
+#       aes(label = label),
+#       x = zerodate,
+#       y = Inf,
+#       hjust = 0,
+#       vjust = 1.5
+#     ) +
+#     annotate(
+#       "text",
+#       x = zerodate,
+#       y = 32,
+#       label = " Freezing (32°F)",
+#       hjust = 0,
+#       vjust = 1.5,
+#       fontface = "italic",
+#       size = 3
+#     ) +
+#     annotate(
+#       "text",
+#       x = zerodate,
+#       y = 27,
+#       label = " Killing (27°F)",
+#       hjust = 0,
+#       vjust = 1.5,
+#       fontface = "italic",
+#       size = 3
+#     ) +
+#     facet_wrap(~measure_name, ncol = 1) +
+#     scale_x_datetime(
+#       breaks = "months",
+#       minor_breaks = NULL,
+#       labels = ~ format(.x, "%b '%y")
+#     ) +
+#     labs(
+#       title = paste(stn$station_name, "soil temperature, winter '24-'25."),
+#       subtitle = paste("Potato volunteer risk:", risk$risk),
+#       x = NULL,
+#       y = "Soil temperature (°F)"
+#     ) +
+#     theme(
+#       legend.position = "none",
+#       title = element_text(size = 14),
+#       strip.text = element_text(size = 12, face = "bold")
+#     )
+# })

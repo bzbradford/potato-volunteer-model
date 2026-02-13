@@ -1,9 +1,6 @@
-
 library(tidyverse)
 library(leaflet)
 library(httr2)
-
-
 
 # API ---------------------------------------------------------------------
 
@@ -30,9 +27,15 @@ get_stns <- function() {
 
 stns <- get_stns()
 
-leaflet(stns) %>%
-  addTiles() %>%
-  addMarkers(lng = ~longitude, lat = ~latitude, label = ~paste0(station_id, ": ", station_name))
+if (FALSE) {
+  leaflet(stns) %>%
+    addTiles() %>%
+    addMarkers(
+      lng = ~longitude,
+      lat = ~latitude,
+      label = ~ paste0(station_id, ": ", station_name)
+    )
+}
 
 
 ## Fields ----
@@ -43,7 +46,7 @@ get_fields <- function(stn_id) {
     req_perform() %>%
     resp_body_json(simplifyVector = T) %>%
     as_tibble() %>%
-    select(where(~!all(is.na(.x) | .x == ""))) %>%
+    select(where(~ !all(is.na(.x) | .x == ""))) %>%
     arrange(measure_type, standard_name)
 }
 
@@ -59,7 +62,7 @@ parse_fieldlist <- function(fieldlist) {
     select(-name) %>%
     unnest_wider(value) %>%
     rename(measure_id = id) %>%
-    select(where(~!all(is.na(.x) | .x == "")))
+    select(where(~ !all(is.na(.x) | .x == "")))
 }
 
 # parse the data response from Wisconet
@@ -71,6 +74,7 @@ parse_data <- function(data) {
     mutate(
       dttm = as_datetime(collection_time),
       dttm_local = with_tz(dttm, tzone = "America/Chicago"),
+      date = as_date(dttm_local),
       .after = collection_time
     ) %>%
     unnest_longer(measures) %>%
@@ -85,72 +89,168 @@ time_to_gmt <- function(t) {
     as.numeric()
 }
 
+# get data from Wisconet
 get_measures <- function(stn_id, fields, start_time, end_time = now()) {
   t <- now()
   message("GET ==> ", stn_id, ": ", start_time, " to ", end_time)
   message("  Fields: ", paste(fields, collapse = ", "))
 
-  if (!exists("stns")) stns <<- get_stns()
+  if (!exists("stns")) {
+    stns <<- get_stns()
+  }
   stopifnot(stn_id %in% stns$station_id)
 
-  if (!exists("all_fields")) all_fields <- get_fields()
+  if (!exists("all_fields")) {
+    all_fields <- get_fields()
+  }
   stopifnot(all(fields %in% all_fields$standard_name))
 
   stn <- stns %>% filter(station_id == stn_id)
 
-  tryCatch({
-    req <- request(measures_url(stn_id)) %>%
-      req_url_query(
-        start_time = time_to_gmt(start_time),
-        end_time = time_to_gmt(end_time),
-        fields = paste(fields, collapse = ",")
-      )
-    resp <- req_perform(req) %>% resp_body_json()
-    resp_fields <- parse_fieldlist(resp$fieldlist)
-    resp_data <- parse_data(resp$data)
-    resp_joined <- resp_data %>% left_join(resp_fields, join_by(measure_id))
-    n_obs <- length(unique(resp_joined$collection_time))
-    message("  Received ", n_obs, " observations in ", now() - t)
-    data <- tibble(station_id = stn_id) %>% bind_cols(resp_joined)
-    stn %>% left_join(data, join_by(station_id))
-  }, error = function(e) {
-    message("  FAIL: ", e)
-    tibble()
-  })
+  tryCatch(
+    {
+      req <- request(measures_url(stn_id)) %>%
+        req_url_query(
+          start_time = time_to_gmt(start_time),
+          end_time = time_to_gmt(end_time),
+          fields = paste(fields, collapse = ",")
+        )
+      resp <- req_perform(req) %>% resp_body_json()
+      if (length(resp[["data"]]) == 0) {
+        stop("No data")
+      }
+      resp_fields <- parse_fieldlist(resp$fieldlist)
+      resp_data <- parse_data(resp$data)
+      resp_joined <- resp_data %>% left_join(resp_fields, join_by(measure_id))
+      n_obs <- length(unique(resp_joined$collection_time))
+      message(sprintf("  Received %s observations in %.3f", n_obs, now() - t))
+      data <- tibble(station_id = stn_id) %>% bind_cols(resp_joined)
+      stn %>% left_join(data, join_by(station_id))
+    },
+    error = function(e) {
+      message("  FAIL: ", e$message)
+      tibble()
+    }
+  )
 }
 
+# get data for all stations
 get_measures_all_stns <- function(fields, start_time, end_time = now()) {
-  if (!exists("stns")) stns <<- get_stns()
-  stns <- stns %>% filter(earliest_api_date <= start_time)
-  message("Found ", nrow(stns), " stations: ", paste(stns$station_id, collapse = ", "))
-  resps <- lapply(stns$station_id, function(stn_id) {
-    get_measures(stn_id, fields, start_time, end_time)
+  if (!exists("stns")) {
+    stns <<- get_stns()
+  }
+  stns <- stns %>% filter(earliest_api_date <= end_time)
+  message(
+    "Found ",
+    nrow(stns),
+    " stations: ",
+    paste(stns$station_id, collapse = ", ")
+  )
+  resps <- lapply(seq_len(nrow(stns)), function(i) {
+    message(sprintf("Station %i / %i", i, nrow(stns)))
+    stn <- slice(stns, i)
+    get_measures(stn$station_id, fields, start_time, end_time)
   })
   bind_rows(resps)
 }
 
 
-
-# Get soil temps ----------------------------------------------------------
+# Get data ---------------------------------------------------------------------
 
 all_fields %>% filter(collection_frequency == "daily") %>% pull(standard_name)
 
-soil_fields <- c(
-  "60min_soil_temp_f_avg@2in",
-  "60min_soil_temp_f_avg@4in"
+select_measures <- tribble(
+  ~standard_name              , ~measure_name             , ~type  , ~depth ,
+  "60min_air_temp_f_avg"      , "Air temperature"         , "air"  ,      0 ,
+  "60min_soil_temp_f_avg@2in" , "2-inch soil temperature" , "soil" ,      2 ,
+  "60min_soil_temp_f_avg@4in" , "4-inch soil temperature" , "soil" ,      4 ,
 )
 
-all(soil_fields %in% all_fields$standard_name)
+# get all new data?
+# wn_data_new <- get_measures_all_stns(
+#   fields = select_measures$standard_name,
+#   start_time = ymd_hms("2024-1-1 0:0:0"),
+#   end_time = now()
+# )
 
-soil_data <- get_measures_all_stns(
-  fields = soil_fields,
-  start_time = ymd_hms("2024-11-1 0:0:0"),
-  end_time = ymd_hms("2025-3-31 23:00:00")
-)
+# load existing data
+wn_data <- readRDS("data/air_soil_temps_hourly_2024-01-01_2026-02-12.rds")
 
-soil_data %>% write_csv("data/soil_temps_hourly_2024.11.01_2025.03.06.csv.gz", na = "")
+# get new data
+if (FALSE) {
+  wn_data_new <- get_measures_all_stns(
+    fields = select_measures$standard_name,
+    start_time = max(wn_data$dttm_local),
+    end_time = now()
+  )
 
-soil_data %>%
-  ggplot(aes(x = dttm_local, y = measure_value, color = station_id)) +
-  geom_line() +
-  facet_wrap(~standard_name)
+  wn_data_new <- get_measures_all_stns(
+    # stn_id = "HNCK",
+    fields = select_measures$standard_name,
+    start_time = ymd_hms("2023-1-1 0:0:0"),
+    end_time = ymd_hms("2023-12-31 23:0:0")
+  )
+
+  wn_data_new <- get_measures(
+    stn_id = "ANGO",
+    fields = select_measures$standard_name,
+    start_time = ymd_hms("2023-1-1 0:0:0"),
+    end_time = ymd_hms("2023-12-31 23:0:0")
+  )
+
+  # add new data
+  wn_data <- wn_data %>%
+    bind_rows(wn_data_new) %>%
+    arrange(station_id, dttm_local, measure_id) %>%
+    distinct() %>%
+    filter(measure_value > -50)
+
+  # save it
+  saveRDS(
+    wn_data,
+    sprintf(
+      "data/air_soil_temps_hourly_%s_%s.rds",
+      format(first(wn_data$dttm_local), "%Y-%m-%d"),
+      format(last(wn_data$dttm_local), "%Y-%m-%d")
+    )
+  )
+
+  # test plot
+  wn_data %>%
+    filter(station_id == "KNGT") %>%
+    ggplot(aes(x = dttm_local, y = measure_value, color = station_id)) +
+    geom_line(lwd = .25) +
+    facet_wrap(~standard_name, ncol = 1) +
+    theme(legend.position = "none")
+}
+
+
+# Process data -----------------------------------------------------------------
+
+hourly_data <- wn_data %>%
+  mutate(
+    year = year(date),
+    yday = yday(date),
+    .after = date
+  ) %>%
+  mutate(
+    season = factor(if_else(
+      yday >= 300,
+      paste(year, year + 1, sep = "-"),
+      if_else(
+        yday <= 90,
+        paste(year - 1, year, sep = "-"),
+        as.character(year)
+      )
+    )),
+    freezing = measure_value < 32,
+    killing = measure_value < 27
+  ) %>%
+  left_join(select_measures)
+
+
+# Save for app -----------------------------------------------------------------
+
+hourly_data %>% fst::write_fst("app/data/hourly_data.fst", compress = 99)
+stns %>% saveRDS("app/data/stns.rds")
+select_measures %>% saveRDS("app/data/measures.rds")
