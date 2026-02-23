@@ -18,7 +18,9 @@ suppressPackageStartupMessages({
   library(fst)
 })
 
-# shiny::devmode(TRUE)
+if (FALSE) {
+  devtools::install_github("https://github.com/trafficonese/leaflet.extras")
+}
 
 # Load data ----
 
@@ -45,6 +47,7 @@ find_closest <- function(lat, lon, df = stns) {
   dists <- (df$latitude - lat)^2 + (df$longitude - lon)^2
   df[which.min(dists), ]
 }
+
 # find_closest(45, -89)
 
 # Calculate volunteer risk -----------------------------------------------------
@@ -72,7 +75,7 @@ calc_vol_risk <- function(data) {
     ) |>
     mutate(
       risk_score = (killing2 >= 120) + (killing4 >= 120) + (killing8 >= 120),
-      risk = case_match(
+      risk = recode_values(
         risk_score,
         0 ~ "Very high",
         1 ~ "High",

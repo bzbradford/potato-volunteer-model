@@ -48,8 +48,6 @@ ui <- page_fillable(
       gap = "1rem",
       # map
       card(
-        # min_height = "600px",
-        # min_height = "40vw",
         card_header(strong("Risk map")),
         card_body(
           padding = 0,
@@ -58,7 +56,6 @@ ui <- page_fillable(
       ),
       # plots
       card(
-        # min_height = "600px",
         card_header(
           div(
             style = "min-height: 24px;",
