@@ -7,10 +7,26 @@ server <- function(input, output) {
     selected_stn = "HNCK"
   )
 
+  # filter hourly data for season
   season_data <- reactive({
-    s <- req(input$season)
-    hourly_data |>
-      filter(season == s)
+    id <- req(input$season)
+    df <- hourly_data[[as.integer(id)]]
+    if (nrow(df) == 0) {
+      warning("No hourly data for id '", id, "'")
+      req(FALSE)
+    }
+    df
+  })
+
+  # filter volunteer risk for season
+  season_risk <- reactive({
+    id <- req(input$season)
+    df <- vol_risk[[as.integer(id)]]
+    if (nrow(df) == 0) {
+      warning("No volunteer risk data for id '", id, "'")
+      req(FALSE)
+    }
+    df
   })
 
   avail_ids <- reactive({
@@ -31,13 +47,6 @@ server <- function(input, output) {
     stn <- rv$selected_stn
     season_data() |>
       filter(station_id == rv$selected_stn)
-  })
-
-  # for map
-  season_risk <- reactive({
-    s <- req(input$season)
-    volunteer_risk |>
-      filter(season == s)
   })
 
   selected_stn_risk <- reactive({
@@ -103,6 +112,7 @@ server <- function(input, output) {
       build_risk_map()
   })
 
+  # refresh map markers on data change
   observe({
     risk <- season_risk()
 

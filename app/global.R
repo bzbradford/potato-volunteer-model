@@ -11,6 +11,7 @@ suppressPackageStartupMessages({
   library(sf)
   library(leaflet)
   library(leaflet.extras)
+  library(markdown)
   library(shiny)
   library(shinyWidgets)
   library(bslib)
@@ -22,41 +23,61 @@ if (FALSE) {
   devtools::install_github("https://github.com/trafficonese/leaflet.extras")
 }
 
-# Load data ----
-
-wi_counties <- read_sf("data/wi-county-bounds-24k.geojson")
-
-stns <- readRDS("data/stns.rds")
-
-hourly_data <- read_fst("data/hourly_data.fst") |>
-  as_tibble() |>
-  mutate(across(where(is.character), factor))
-
-measures <- hourly_data |>
-  distinct(standard_name, measure_name, type, depth) %>%
-  arrange(depth)
-
-OPTS <- list(
-  season_choices = levels(hourly_data$season)
-)
-
-
-# Helpers ----
+# Functions --------------------------------------------------------------------
 
 find_closest <- function(lat, lon, df = stns) {
   dists <- (df$latitude - lat)^2 + (df$longitude - lon)^2
   df[which.min(dists), ]
 }
-
 # find_closest(45, -89)
 
-# Calculate volunteer risk -----------------------------------------------------
+# Load data --------------------------------------------------------------------
+
+wi_counties <- read_rds("data/counties.rds")
+stns <- read_rds("data/stations.rds")
+
+# expect station data files like "{id} {season}.fst"
+index <- tibble(
+  path = list.files("data", "\\.fst$", full.names = TRUE),
+  file = basename(path),
+  season = tools::file_path_sans_ext(file) |> str_remove("^\\d+\\s*")
+) |>
+  mutate(id = row_number(), .before = 1)
+
+# for the UI
+season_choices <- set_names(index$id, index$season)
+
+# select the most recent winter season
+initial_season_id <- max(which(str_detect(index$season, "-")))
+
+# loader function
+load_data <- function(id) {
+  path <- index[id, ][["path"]]
+  if (!file.exists(path)) {
+    warning("File '", path, "' not found.")
+    return()
+  }
+  read_fst(path) |>
+    as_tibble() |>
+    mutate(dttm_local = with_tz(dttm, "America/Chicago"), .after = dttm)
+}
+# load_data(1)
+
+# load hourly fst data
+hourly_data <- map(seq_along(index$id), load_data)
+
+measures <- hourly_data[[1]] |>
+  distinct(standard_name, measure_name, type, depth) |>
+  arrange(depth)
+
+
+# Volunteer risk calculation ---------------------------------------------------
+
 #' Potato volunteer survival model
 #' Soil temperatures must be below 27F for 120 hours
 #' High risk: 2in & 4in < 120 hours
 #' Moderate risk: 2in > 120 hours, 4in < 120 hours
 #' Low risk 2in & 4in > 120 hours
-
 calc_vol_risk <- function(data) {
   data |>
     summarize(
@@ -87,7 +108,8 @@ calc_vol_risk <- function(data) {
     arrange(season, station_id)
 }
 
-volunteer_risk <- calc_vol_risk(hourly_data)
+# calculate volunteer risk scores from hourly data
+vol_risk <- lapply(hourly_data, calc_vol_risk)
 
 
 # Map --------------------------------------------------------------------------
@@ -126,7 +148,14 @@ build_risk_map <- function(data) {
       fillOpacity = .0001,
       label = ~ paste(county_name, "County")
     ) |>
-    add_risk_markers()
+    add_risk_markers() |>
+    addLegend(
+      position = "bottomright",
+      pal = colorFactor("viridis", levels(data$risk), reverse = TRUE),
+      values = levels(data$risk),
+      title = "Volunteer risk",
+      opacity = 1
+    )
 }
 
 add_risk_markers <- function(map, data = getMapData(map)) {
@@ -186,22 +215,22 @@ build_plot <- function(data) {
 
   # Compute rolling mean per measure
   data <- data |>
-    arrange(dttm) |>
+    group_by(station_id, standard_name) |>
+    arrange(dttm_local) |>
     mutate(
       rolling_mean = zoo::rollapply(
         measure_value,
         24,
         \(x) mean(x, na.rm = TRUE),
         partial = TRUE
-      ),
-      .by = c(station_id, standard_name)
+      )
     )
 
   measures <- levels(data$measure_name)
   # show_legend <- length(measures) > 1
   show_legend <- FALSE
 
-  p <- plot_ly(x = ~dttm_local)
+  p <- plot_ly()
 
   for (i in seq_along(measures)) {
     m <- measures[i]
@@ -211,6 +240,7 @@ build_plot <- function(data) {
     p <- p |>
       add_lines(
         data = d,
+        x = ~dttm_local,
         y = ~measure_value,
         line = list(color = colors[1], width = 1),
         name = paste(m, "(hourly)"),
@@ -220,6 +250,7 @@ build_plot <- function(data) {
       ) |>
       add_lines(
         data = d,
+        x = ~dttm_local,
         y = ~rolling_mean,
         line = list(color = colors[2], width = 2),
         name = paste(m, "(24-hr)"),

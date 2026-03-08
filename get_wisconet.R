@@ -176,7 +176,7 @@ select_measures <- tribble(
 # )
 
 # load existing data
-wn_data <- read_fst("data/wn_data_2023-11-01_2026-02-13.fst") |>
+wn_data <- read_fst("data/wn_data.fst") |>
   as_tibble()
 
 # get new data
@@ -184,7 +184,7 @@ if (FALSE) {
   # get all measures
   wn_data_new <- get_measures_all_stns(
     fields = select_measures$standard_name,
-    start_time = ymd_hms("2026-02-13 0:0:0"),
+    start_time = max(wn_data$dttm),
     end_time = now()
   )
 
@@ -212,11 +212,12 @@ if (FALSE) {
   # save it
   local({
     df <- as_tibble(wn_data)
-    fname <- sprintf(
-      "data/wn_data_%s_%s.fst",
-      format(first(df$dttm_local), "%Y-%m-%d"),
-      format(last(df$dttm_local), "%Y-%m-%d")
-    )
+    # fname <- sprintf(
+    #   "data/wn_data_%s_%s.fst",
+    #   format(first(df$dttm_local), "%Y-%m-%d"),
+    #   format(last(df$dttm_local), "%Y-%m-%d")
+    # )
+    fname <- sprintf("data/wn_data.fst")
     message(
       "Saving to '",
       fname,
@@ -264,6 +265,6 @@ hourly_data <- wn_data %>%
 # Save for app -----------------------------------------------------------------
 
 hourly_data %>%
-  fst::write_fst("../potato-volunteer-app/data/hourly_data.fst", compress = 99)
-stns %>% saveRDS("../potato-volunteer-app/data/stns.rds")
-select_measures %>% saveRDS("../potato-volunteer-app/data/measures.rds")
+  fst::write_fst("../app/data/hourly_data.fst", compress = 99)
+stns %>% saveRDS("../app/data/stns.rds")
+# select_measures %>% saveRDS("../potato-volunteer-app/data/measures.rds")

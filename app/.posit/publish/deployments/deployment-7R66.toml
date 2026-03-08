@@ -2,7 +2,7 @@
 '$schema' = 'https://cdn.posit.co/publisher/schemas/posit-publishing-record-schema-v3.json'
 server_type = 'connect'
 server_url = 'https://connect.doit.wisc.edu'
-client_version = '1.35.0'
+client_version = '1.35.3'
 created_at = ''
 dismissed_at = ''
 type = 'r-shiny'
@@ -11,17 +11,20 @@ id = '81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0'
 dashboard_url = 'https://connect.doit.wisc.edu/connect/#/apps/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0'
 direct_url = 'https://connect.doit.wisc.edu/content/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/'
 logs_url = 'https://connect.doit.wisc.edu/connect/#/apps/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/logs'
-deployed_at = '2026-02-23T17:24:22-06:00'
-bundle_id = '4538'
-bundle_url = 'https://connect.doit.wisc.edu/__api__/v1/content/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/bundles/4538/download'
+deployed_at = '2026-03-07T21:18:18-06:00'
+bundle_id = '4620'
+bundle_url = 'https://connect.doit.wisc.edu/__api__/v1/content/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/bundles/4620/download'
 files = [
   '.posit/publish/Potato volunteer risk map-P48A.toml',
   '.posit/publish/deployments/deployment-7R66.toml',
   'about.md',
-  'data/hourly_data.fst',
-  'data/measures.rds',
-  'data/stns.rds',
-  'data/wi-county-bounds-24k.geojson',
+  'data/1 2023-2024.fst',
+  'data/2 2024.fst',
+  'data/3 2024-2025.fst',
+  'data/4 2025.fst',
+  'data/5 2025-2026.fst',
+  'data/counties.rds',
+  'data/stations.rds',
   'global.R',
   'renv.lock',
   'server.R',
@@ -1901,6 +1904,29 @@ author = 'Lionel Henry [aut, cre], Hadley Wickham [aut] (ORCID: <https://orcid.o
 'config/testthat/edition' = '3'
 'config/needs/website' = 'tidyverse/tidytemplate, usethis'
 
+[renv.packages.litedown]
+package = 'litedown'
+version = '0.9'
+source = 'Repository'
+repository = 'https://packagemanager.posit.co/cran/latest'
+depends = ['R (>= 3.2.0)']
+hash = ''
+type = 'Package'
+title = 'A Lightweight Version of R Markdown'
+'authors@r' = 'c( person("Yihui", "Xie", role = c("aut", "cre"), email = "xie@yihui.name", comment = c(ORCID = "0000-0003-0645-5666", URL = "https://yihui.org")), person("Tim", "Taylor", role = "ctb", comment = c(ORCID = "0000-0002-8587-7113")), person() )'
+maintainer = 'Yihui Xie <xie@yihui.name>'
+description = "Render R Markdown to Markdown (without using 'knitr'), and Markdown to lightweight HTML or 'LaTeX' documents with the 'commonmark' package (instead of 'Pandoc'). Some missing Markdown features in 'commonmark' are also supported, such as raw HTML or 'LaTeX' blocks, 'LaTeX' math, superscripts, subscripts, footnotes, element attributes, and appendices, but not all 'Pandoc' Markdown features are (or will be) supported. With additional JavaScript and CSS, you can also create HTML slides and articles. This package can be viewed as a trimmed-down version of R Markdown and 'knitr'. It does not aim at rich Markdown features or a large variety of output formats (the primary formats are HTML and 'LaTeX'). Book and website projects of multiple input documents are also supported."
+url = 'https://github.com/yihui/litedown'
+bugreports = 'https://github.com/yihui/litedown/issues'
+license = 'MIT + file LICENSE'
+imports = ['utils', 'commonmark (>= 2.0.0)', 'xfun (>= 0.55)']
+suggests = ['rbibutils', 'rstudioapi', 'tinytex']
+vignettebuilder = 'litedown'
+roxygennote = '7.3.3'
+encoding = 'UTF-8'
+needscompilation = 'no'
+author = 'Yihui Xie [aut, cre] (ORCID: <https://orcid.org/0000-0003-0645-5666>, URL: https://yihui.org), Tim Taylor [ctb] (ORCID: <https://orcid.org/0000-0002-8587-7113>)'
+
 [renv.packages.lubridate]
 package = 'lubridate'
 version = '1.9.5'
@@ -1949,6 +1975,28 @@ encoding = 'UTF-8'
 needscompilation = 'yes'
 author = 'Stefan Milton Bache [aut, cph] (Original author and creator of magrittr), Hadley Wickham [aut], Lionel Henry [cre], Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>)'
 'config/needs/website' = 'tidyverse/tidytemplate'
+
+[renv.packages.markdown]
+package = 'markdown'
+version = '2.0'
+source = 'Repository'
+repository = 'CRAN'
+depends = ['R (>= 2.11.1)']
+hash = ''
+type = 'Package'
+title = "Render Markdown with 'commonmark'"
+'authors@r' = 'c( person("Yihui", "Xie", role = c("aut", "cre"), email = "xie@yihui.name", comment = c(ORCID = "0000-0003-0645-5666")), person("JJ", "Allaire", role = "aut"), person("Jeffrey", "Horner", role = "aut"), person("Henrik", "Bengtsson", role = "ctb"), person("Jim", "Hester", role = "ctb"), person("Yixuan", "Qiu", role = "ctb"), person("Kohske", "Takahashi", role = "ctb"), person("Adam", "November", role = "ctb"), person("Nacho", "Caballero", role = "ctb"), person("Jeroen", "Ooms", role = "ctb"), person("Thomas", "Leeper", role = "ctb"), person("Joe", "Cheng", role = "ctb"), person("Andrzej", "Oles", role = "ctb"), person(given = "Posit Software, PBC", role = c("cph", "fnd")) )'
+maintainer = 'Yihui Xie <xie@yihui.name>'
+description = "Render Markdown to full and lightweight HTML/LaTeX documents with the 'commonmark' package. This package has been superseded by 'litedown'."
+url = 'https://github.com/rstudio/markdown'
+bugreports = 'https://github.com/rstudio/markdown/issues'
+license = 'MIT + file LICENSE'
+imports = ['utils', 'xfun', 'litedown (>= 0.6)']
+suggests = ['knitr', 'rmarkdown (>= 2.18)', 'yaml', 'RCurl']
+roxygennote = '7.3.2'
+encoding = 'UTF-8'
+needscompilation = 'no'
+author = 'Yihui Xie [aut, cre] (<https://orcid.org/0000-0003-0645-5666>), JJ Allaire [aut], Jeffrey Horner [aut], Henrik Bengtsson [ctb], Jim Hester [ctb], Yixuan Qiu [ctb], Kohske Takahashi [ctb], Adam November [ctb], Nacho Caballero [ctb], Jeroen Ooms [ctb], Thomas Leeper [ctb], Joe Cheng [ctb], Andrzej Oles [ctb], Posit Software, PBC [cph, fnd]'
 
 [renv.packages.memoise]
 package = 'memoise'

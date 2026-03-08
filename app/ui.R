@@ -32,8 +32,8 @@ ui <- page_fillable(
         label = HTML(
           "<strong>Weather season:</strong>"
         ),
-        choices = OPTS$season_choices,
-        selected = last(OPTS$season_choices),
+        choices = season_choices,
+        selected = initial_season_id,
         size = "sm",
         individual = TRUE
       ),
