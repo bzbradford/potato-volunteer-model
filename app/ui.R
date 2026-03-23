@@ -8,6 +8,10 @@ ui <- page_fillable(
     ".leaflet-control-attribution { display: none; } .form-group { margin-bottom: 0; }"
   ),
 
+  tags$head(
+    tags$link(rel = "shortcut icon", href = "favicon.ico"),
+  ),
+
   tags$header(
     style = "background-color: #c5050c; font-weight: bold; padding: 0.5rem 1rem; font-size: 1.25rem; color: white; display: inline-flex; justify-content: space-between;",
     div("Wisconsin Potato Volunteer Risk Map"),
@@ -40,19 +44,12 @@ ui <- page_fillable(
       radioGroupButtons(
         inputId = "season",
         label = NULL,
-        # label = HTML(
-        #   "<strong>Weather season:</strong>"
-        # ),
         choices = season_choices,
         # pick most recent winter season
         selected = season_choices[max(which(str_detect(season_choices, "-")))],
         size = "sm",
         individual = TRUE
       ),
-      # div(
-      #   style = "font-size: smaller;",
-      #   "Note: Potato volunteer risk applies only to winter seasons. Summer weather provided for informational purposes."
-      # ),
     ),
 
     layout_columns(

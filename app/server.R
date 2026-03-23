@@ -154,12 +154,7 @@ server <- function(input, output) {
       },
       "reset" = {
         leafletProxy("map") |>
-          fitBounds(
-            lat1 = min(stns$latitude),
-            lat2 = max(stns$latitude),
-            lng1 = min(stns$longitude),
-            lng2 = max(stns$longitude)
-          )
+          fit_stns()
       }
     )
   })

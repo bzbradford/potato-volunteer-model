@@ -144,7 +144,7 @@ source("wisconet.R")
 tryCatch(
   local({
     wn <- Wisconet$new()
-    stns <- wn$stations
+    stns <<- wn$stations
     stns |> write_rds("data/stations.rds")
 
     # use the last 2 seasons to check for update needs
@@ -306,7 +306,12 @@ build_risk_map <- function(data) {
   )
 
   data |>
-    leaflet() |>
+    leaflet(
+      options = leafletOptions(
+        zoomSnap = 0.25,
+        zoomDelta = 0.5
+      )
+    ) |>
     addProviderTiles(providers$OpenStreetMap, group = "OpenStreetMap") |>
     addProviderTiles(providers$Esri.WorldImagery, group = "Satellite") |>
     addLayersControl(baseGroups = c("OpenStreetMap", "Satellite")) |>
@@ -326,7 +331,8 @@ build_risk_map <- function(data) {
       values = data$risk,
       title = "Volunteer risk",
       opacity = 1
-    )
+    ) |>
+    fit_stns()
 }
 
 add_risk_markers <- function(map, data = getMapData(map)) {
@@ -344,6 +350,16 @@ add_risk_markers <- function(map, data = getMapData(map)) {
     fillColor = ~ colorFactor("viridis", risk, reverse = TRUE)(risk),
     fillOpacity = 1
   )
+}
+
+fit_stns <- function(map) {
+  map |>
+    fitBounds(
+      lat1 = min(stns$latitude) - 0.25,
+      lat2 = max(stns$latitude) + 0.25,
+      lng1 = min(stns$longitude) - 0.25,
+      lng2 = max(stns$longitude) + 0.25
+    )
 }
 
 if (FALSE) {

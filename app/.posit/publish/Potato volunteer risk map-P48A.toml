@@ -15,7 +15,8 @@ files = [
   '/about.md',
   '/server.R',
   '/ui.R',
-  '/www'
+  '/www',
+  '/wisconet.R'
 ]
 title = 'Potato volunteer risk map'
 
