@@ -11,24 +11,25 @@ id = '81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0'
 dashboard_url = 'https://connect.doit.wisc.edu/connect/#/apps/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0'
 direct_url = 'https://connect.doit.wisc.edu/content/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/'
 logs_url = 'https://connect.doit.wisc.edu/connect/#/apps/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/logs'
-deployed_at = '2026-03-07T21:18:18-06:00'
-bundle_id = '4620'
-bundle_url = 'https://connect.doit.wisc.edu/__api__/v1/content/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/bundles/4620/download'
+deployed_at = '2026-03-23T15:48:34-05:00'
+bundle_id = '4638'
+bundle_url = 'https://connect.doit.wisc.edu/__api__/v1/content/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/bundles/4638/download'
 files = [
   '.posit/publish/Potato volunteer risk map-P48A.toml',
   '.posit/publish/deployments/deployment-7R66.toml',
   'about.md',
-  'data/1 2023-2024.fst',
-  'data/2 2024.fst',
-  'data/3 2024-2025.fst',
-  'data/4 2025.fst',
-  'data/5 2025-2026.fst',
+  'data/2023-2024.fst',
+  'data/2024-2025.fst',
+  'data/2024.fst',
+  'data/2025-2026.fst',
+  'data/2025.fst',
   'data/counties.rds',
   'data/stations.rds',
   'global.R',
   'renv.lock',
   'server.R',
   'ui.R',
+  'wisconet.R',
   'www/favicon.ico'
 ]
 
@@ -47,7 +48,8 @@ files = [
   '/about.md',
   '/server.R',
   '/ui.R',
-  '/www'
+  '/www',
+  '/wisconet.R'
 ]
 title = 'Potato volunteer risk map'
 

@@ -67,11 +67,11 @@ wn_status <- wn_data |>
 
 
 # update with new data
-wn_data_new <- wn$get_measures_all(
-  fields = select_measures$standard_name,
-  start_time = min(wn_data_status$last_dttm) + hours(1),
-  end_time = now()
-)
+# wn_data_new <- wn$get_measures_all(
+#   fields = select_measures$standard_name,
+#   start_time = min(wn_status$last_dttm) + hours(1),
+#   end_time = now()
+# )
 
 # update with new data using station-specific times
 wn_data_new <- wn$get_measures_all(

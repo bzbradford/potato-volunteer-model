@@ -8,6 +8,10 @@ ui <- page_fillable(
     ".leaflet-control-attribution { display: none; } .form-group { margin-bottom: 0; }"
   ),
 
+  tags$head(
+    tags$link(rel = "shortcut icon", href = "favicon.ico"),
+  ),
+
   tags$header(
     style = "background-color: #c5050c; font-weight: bold; padding: 0.5rem 1rem; font-size: 1.25rem; color: white; display: inline-flex; justify-content: space-between;",
     div("Wisconsin Potato Volunteer Risk Map"),
@@ -26,20 +30,25 @@ ui <- page_fillable(
     class = "border-0",
     min_height = "600px",
     div(
-      style = "display: flex; flex-direction: row; flex-wrap: wrap; gap: 1rem; align-items: end;",
+      style = "font-size: small;",
+      HTML(
+        "Potato volunteers are tubers left in the field after harvest which may survive the winter and grow during the following season. The tubers themselves may harbor pests and diseases, and the plants that grow from these tubers may increase the risk of serious diseases including late blight (<i>Phytophthora infestans</i>). Using weather data from Wisconet, this app illustrates soil temperatures and the associated risk of potato tuber overwintering. Note: Risk only applies to winter seasons, summer weather included for informational purposes only."
+      )
+    ),
+    div(
+      style = "display: flex; flex-direction: row; flex-wrap: wrap; gap: 1rem; align-items: center;",
+      tags$label(
+        strong("Weather season:"),
+        `for` = "season"
+      ),
       radioGroupButtons(
         inputId = "season",
-        label = HTML(
-          "<strong>Weather season:</strong>"
-        ),
+        label = NULL,
         choices = season_choices,
-        selected = initial_season_id,
+        # pick most recent winter season
+        selected = season_choices[max(which(str_detect(season_choices, "-")))],
         size = "sm",
         individual = TRUE
-      ),
-      div(
-        style = "font-size: smaller;",
-        "Note: Potato volunteer risk applies only to winter seasons. Summer weather provided for informational purposes."
       ),
     ),
 
