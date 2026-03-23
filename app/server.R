@@ -1,34 +1,39 @@
 server <- function(input, output) {
   # bs_themer()
 
-  # Reactives ----
+  # Reactives ------------------------------------------------------------------
 
+  ## rv ----
   rv <- reactiveValues(
     selected_stn = "HNCK"
   )
 
+  ## season_data ----
   # filter hourly data for season
   season_data <- reactive({
-    id <- req(input$season)
-    df <- hourly_data[[as.integer(id)]]
+    season <- req(input$season)
+    df <- hourly_data[[season]]
     if (nrow(df) == 0) {
-      warning("No hourly data for id '", id, "'")
+      warning("No hourly data for season '", season, "'")
       req(FALSE)
     }
     df
   })
 
+  ## season_risk ----
   # filter volunteer risk for season
   season_risk <- reactive({
-    id <- req(input$season)
-    df <- vol_risk[[as.integer(id)]]
+    season <- req(input$season)
+    df <- vol_risk[[season]]
     if (nrow(df) == 0) {
-      warning("No volunteer risk data for id '", id, "'")
+      warning("No volunteer risk data for season '", season, "'")
       req(FALSE)
     }
     df
   })
 
+  ## avail_ids ----
+  # station ids with data for selected season
   avail_ids <- reactive({
     data <- season_data()
     avail_ids <- unique(data$station_id)
@@ -42,6 +47,8 @@ server <- function(input, output) {
     avail_ids
   })
 
+  ## stn_data ----
+  # data for selected station
   stn_data <- reactive({
     stns <- avail_ids() # just to trigger invalidation on change
     stn <- rv$selected_stn
@@ -49,6 +56,8 @@ server <- function(input, output) {
       filter(station_id == rv$selected_stn)
   })
 
+  ## selected_stn_risk ----
+  # risk data for selected station to display on the map
   selected_stn_risk <- reactive({
     stn <- season_risk() |>
       filter(station_id == rv$selected_stn)
@@ -56,7 +65,9 @@ server <- function(input, output) {
     stn
   })
 
-  # UI ----
+  # Rendered UI components -----------------------------------------------------
+
+  ## stn_name ----
   output$stn_name <- renderUI({
     stn <- selected_stn_risk()
     div(
@@ -73,6 +84,7 @@ server <- function(input, output) {
     )
   })
 
+  ## stn_risk ----
   output$stn_risk <- renderUI({
     stn <- selected_stn_risk()
     colorize <- function(val) {
@@ -94,7 +106,7 @@ server <- function(input, output) {
     ))
   })
 
-  # Show modal ----
+  ## modal info handler ----
   observe({
     mod <- modalDialog(
       includeMarkdown("about.md"),
@@ -106,12 +118,15 @@ server <- function(input, output) {
   }) |>
     bindEvent(input$info)
 
-  # Map ----
+  # Map ------------------------------------------------------------------------
+
+  ## render map ----
   output$map <- renderLeaflet({
     isolate(season_risk()) |>
       build_risk_map()
   })
 
+  ## map marker handler ----
   # refresh map markers on data change
   observe({
     risk <- season_risk()
@@ -121,7 +136,7 @@ server <- function(input, output) {
       add_risk_markers(data = risk)
   })
 
-  # handle zoom button
+  ## zoom button handler ----
   observe({
     action <- req(input$map_btn)
     switch(
@@ -143,7 +158,8 @@ server <- function(input, output) {
     )
   })
 
-  # handle marker click
+  ## marker click handler ----
+  # set selected station on marker click
   observe({
     rv$selected_stn <- req(input$map_marker_click$id)
   })
@@ -165,18 +181,23 @@ server <- function(input, output) {
   })
 
   # Plots ----
+
+  ## air_plot ----
+  # air temperature plot
+  output$air_plot <- renderPlotly({
+    stn_id <- req(rv$selected_stn)
+    stn_data() |>
+      filter(depth == 0) |>
+      build_plot()
+  })
+
+  ## soil_plot ----
+  # soil temperature plot
   output$soil_plot <- renderPlotly({
     stn_id <- req(rv$selected_stn)
     # build_plotly(stn_data(), stn_id)
     stn_data() |>
       filter(depth > 0) |>
-      build_plot()
-  })
-
-  output$air_plot <- renderPlotly({
-    stn_id <- req(rv$selected_stn)
-    stn_data() |>
-      filter(depth == 0) |>
       build_plot()
   })
 }

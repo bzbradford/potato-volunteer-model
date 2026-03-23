@@ -33,7 +33,8 @@ ui <- page_fillable(
           "<strong>Weather season:</strong>"
         ),
         choices = season_choices,
-        selected = initial_season_id,
+        # pick most recent winter season
+        selected = season_choices[max(which(str_detect(season_choices, "-")))],
         size = "sm",
         individual = TRUE
       ),
