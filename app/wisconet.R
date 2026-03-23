@@ -193,11 +193,11 @@ Wisconet <- R6Class(
       resps <- req_perform_parallel(
         reqs,
         on_error = "continue",
-        progress = TRUE,
+        progress = "Fetching station data",
         max_active = max_reqs_per_sec
       )
 
-      results <- map2(resps, stn_ids, ~ private$parse_response(.x, .y))
+      results <- map2(resps, stn_ids, ~ private$parse_response(.x, .y), .progress = "Parsing responses")
       combined <- bind_rows(results)
 
       elapsed <- as.numeric(difftime(now(), t, units = "secs"))

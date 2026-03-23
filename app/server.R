@@ -61,7 +61,7 @@ server <- function(input, output) {
   selected_stn_risk <- reactive({
     stn <- season_risk() |>
       filter(station_id == rv$selected_stn)
-    req(nrow(stn) > 0)
+    req(nrow(stn) == 1)
     stn
   })
 
@@ -70,17 +70,23 @@ server <- function(input, output) {
   ## stn_name ----
   output$stn_name <- renderUI({
     stn <- selected_stn_risk()
+    nm <- as.character(stn$station_name)
+    stn_link <- sprintf(
+      "https://wisconet.wisc.edu/stations/%s",
+      str_to_snake(nm)
+    )
     div(
       style = "display: inline-flex; gap: 10px; align-items: flex-end;",
       strong(sprintf(
         "%s: %s",
         stn$station_id,
-        stn$station_name
+        nm
       )),
-      div(
+      span(
         style = "font-size: smaller; color: grey;",
         sprintf("(%.6f°N, %.6f°W)", stn$latitude, stn$longitude)
-      )
+      ),
+      a(href = stn_link, "View station on Wisconet", target = "_blank")
     )
   })
 
