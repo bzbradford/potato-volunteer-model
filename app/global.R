@@ -21,6 +21,8 @@ suppressPackageStartupMessages({
 
 if (FALSE) {
   devtools::install_github("https://github.com/trafficonese/leaflet.extras")
+  renv::update()
+  renv::snapshot()
 }
 
 options(shiny.fullstacktrace = FALSE)

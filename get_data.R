@@ -6,7 +6,7 @@ wi_counties <- read_sf("data/wi-county-bounds-24k.geojson")
 wi_counties |> write_rds("app/data/counties.rds")
 
 # initialize Wisconet wrapper
-source("wisconet.R")
+source("app/wisconet.R")
 wn <- Wisconet$new()
 
 wn$stations |> write_rds("app/data/stations.rds")
