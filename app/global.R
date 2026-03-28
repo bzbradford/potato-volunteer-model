@@ -6,9 +6,10 @@
 #' Moderate risk: 2in > 120 hours, 4in < 120 hours
 #' Low risk 2in & 4in > 120 hours
 
+library(sf)
+
 suppressPackageStartupMessages({
   library(tidyverse)
-  library(sf)
   library(leaflet)
   library(leaflet.extras)
   library(markdown)
@@ -20,7 +21,10 @@ suppressPackageStartupMessages({
 })
 
 if (FALSE) {
-  devtools::install_github("https://github.com/trafficonese/leaflet.extras")
+  remotes::install_github("https://github.com/trafficonese/leaflet.extras")
+  # renv::install("sf@1.0-24")
+  renv::init()
+  renv::clean()
   renv::update()
   renv::snapshot()
 }
@@ -38,13 +42,15 @@ find_closest <- function(lat, lon, df = stns) {
 # Load data --------------------------------------------------------------------
 
 wi_counties <- read_rds("data/counties.rds")
+stns <- read_rds("data/stations.rds")
 
 # expect station data files like "{id} {season}.fst"
 build_index <- function() {
   tibble(
     path = list.files("data", "\\.fst$", full.names = TRUE),
     file = basename(path),
-    season = tools::file_path_sans_ext(file) # |> str_remove("^\\d+\\s*")
+    season = tools::file_path_sans_ext(file),
+    winter = grepl("-", season)
   ) |>
     arrange(season) |>
     mutate(id = row_number(), .before = 1)
@@ -52,9 +58,9 @@ build_index <- function() {
 
 index <- build_index()
 season_choices <- set_names(index$season)
-initial_season <- season_choices[max(which(str_detect(season_choices, "-")))]
+initial_season <- index$season[max(which(index$winter == TRUE))]
 
-# loader function
+# data loader function
 load_data <- function(path) {
   if (!file.exists(path)) {
     warning("File '", path, "' not found.")
@@ -65,36 +71,16 @@ load_data <- function(path) {
     mutate(dttm_local = with_tz(dttm, "America/Chicago"), .after = dttm) |>
     filter(measure_value > -50)
 }
-# load_data(1)
-
-# load hourly fst data
-# cached_data <- map(seq_along(index$id), load_data) |>
-#   set_names(index$season)
 
 # load data for initial season
 hourly_data <- load_data(index$path[index$season == initial_season]) |>
   list() |>
   set_names(initial_season)
 
-# load stations from disk as fallback before Wisconet update runs
-stns <- read_rds("data/stations.rds")
-
 # hourly_data[["2025-2026"]] <- hourly_data[["2025-2026"]] |>
 #   mutate(across(where(is.character), as.factor))
 
 # Update from Wisconet ---------------------------------------------------------
-
-if (FALSE) {
-  last(cached_data) |>
-    count(dttm, station_id) |>
-    # complete(nesting(station_id, collection_time), fill = list(n = 0)) |>
-    # filter(n == 0)
-    pivot_wider(names_from = station_id, values_from = n) |>
-    pivot_longer(-dttm) |>
-    filter(is.na(value)) |>
-    arrange(name, dttm)
-}
-
 
 # what to download
 select_measures <- tribble(
@@ -382,14 +368,12 @@ fit_stns <- function(map) {
     )
 }
 
+# test
 if (FALSE) {
-  build_map()
-
-  df <- vol_risk[["2025-2026"]]
-  df |> build_risk_map()
-
-  hourly_data |>
-    filter(station_id == "KNGT")
+  df <- last(hourly_data) |>
+    calc_vol_risk()
+  build_map() |>
+    add_risk_markers(df)
 }
 
 
@@ -579,69 +563,3 @@ if (FALSE) {
     filter(station_id == "HNCK", depth > 0) |>
     build_plot()
 }
-
-# Archive ----------------------------------------------------------------------
-
-## Stacked plot ----
-#
-# build_plotly <- function(data, stn_id) {
-#   stn <- stns |> filter(station_id == stn_id)
-#   risk <- volunteer_risk |> filter(station_id == stn_id)
-#   stn_data <- data |> filter(station_id == stn_id)
-#
-#   killing_hrs <- stn_data |>
-#     filter(depth > 0) |>
-#     summarize(hrs = sum(measure_value < 27, na.rm = TRUE), .by = measure_name)
-#
-#   p1 <- stn_data |>
-#     filter(depth == 2) |>
-#     build_plot()
-#   p2 <- stn_data |>
-#     filter(depth == 4) |>
-#     build_plot()
-#
-#   subplot(p1, p2, nrows = 2, shareX = TRUE, titleY = TRUE) |>
-#     layout(
-#       # margin = list(t = 20, r = 10, b = 10, l = 10),
-#       annotations = list(
-#         # subplot 1 title
-#         list(
-#           text = paste0(
-#             "<b>2-inch soil temperature</b> - ",
-#             killing_hrs$hrs[1],
-#             " hrs below 27°F"
-#           ),
-#           x = 0.5,
-#           y = 1.0,
-#           xref = "paper",
-#           yref = "paper",
-#           showarrow = FALSE,
-#           font = list(size = 11),
-#           xanchor = "center",
-#           yanchor = "bottom"
-#         ),
-#         # subplot 2 title
-#         list(
-#           text = paste0(
-#             "<b>4-inch soil temperature</b> - ",
-#             killing_hrs$hrs[2],
-#             " hrs below 27°F"
-#           ),
-#           x = 0.5,
-#           y = 0.48,
-#           xref = "paper",
-#           yref = "paper",
-#           showarrow = FALSE,
-#           font = list(size = 11),
-#           xanchor = "center",
-#           yanchor = "bottom"
-#         )
-#       )
-#     )
-# }
-#
-# if (FALSE) {
-#   hourly_data |>
-#     filter(season == "2025-2026") |>
-#     build_plotly("ANGO")
-# }
