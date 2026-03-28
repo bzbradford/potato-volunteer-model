@@ -8,6 +8,14 @@ ui <- page_fillable(
     ".leaflet-control-attribution { display: none; } .form-group { margin-bottom: 0; }"
   ),
 
+  tags$script(
+    "
+  $(document).on('shiny:idle', function(event) {
+    Shiny.setInputValue('js_idle', true);
+  });
+"
+  ),
+
   tags$head(
     tags$link(rel = "shortcut icon", href = "favicon.ico"),
   ),
@@ -45,11 +53,10 @@ ui <- page_fillable(
         inputId = "season",
         label = NULL,
         choices = season_choices,
-        # pick most recent winter season
-        selected = season_choices[max(which(str_detect(season_choices, "-")))],
+        selected = initial_season,
         size = "sm",
         individual = TRUE
-      ),
+      )
     ),
 
     layout_columns(
@@ -66,10 +73,7 @@ ui <- page_fillable(
       # plots
       card(
         card_header(
-          div(
-            style = "min-height: 24px;",
-            uiOutput("stn_name")
-          )
+          uiOutput("stn_heading", style = "min-height: 24px;")
         ),
         card_body(
           padding = 10,
@@ -83,9 +87,13 @@ ui <- page_fillable(
 
     tags$footer(
       div(
-        style = "text-align: right; font-style: italic; font-size: small; color: grey;",
-        HTML(
-          "Developed by <a href='https://entomology.wisc.edu/directory/ben-bradford/' target='_blank'>Ben Bradford</a>, UW-Madison Entomology. <a href='https://github.com/bzbradford/potato-volunteer-model' target='_blank'>View source code</a>. Weather data sourced from <a href='https://wisconet.wisc.edu' target='_blank'>Wisconet</a>."
+        style = "display: flex; justify-content: space-between; align-items: center; font-size: small;",
+        uiOutput("update_status"),
+        div(
+          style = "font-style: italic; color: grey; text-align: right;",
+          HTML(
+            "Developed by <a href='https://entomology.wisc.edu/directory/ben-bradford/' target='_blank'>Ben Bradford</a>, UW-Madison Entomology. <a href='https://github.com/bzbradford/potato-volunteer-model' target='_blank'>View source code</a>. Weather data sourced from <a href='https://wisconet.wisc.edu' target='_blank'>Wisconet</a>."
+          )
         )
       )
     )

@@ -51,10 +51,11 @@ build_index <- function() {
 }
 
 index <- build_index()
+season_choices <- set_names(index$season)
+initial_season <- season_choices[max(which(str_detect(season_choices, "-")))]
 
 # loader function
-load_data <- function(id) {
-  path <- index[id, ][["path"]]
+load_data <- function(path) {
   if (!file.exists(path)) {
     warning("File '", path, "' not found.")
     return()
@@ -67,11 +68,16 @@ load_data <- function(id) {
 # load_data(1)
 
 # load hourly fst data
-hourly_data <- map(seq_along(index$id), load_data) |>
-  set_names(index$season)
+# cached_data <- map(seq_along(index$id), load_data) |>
+#   set_names(index$season)
 
-# set data for UI and set the most recent
-season_choices <- names(hourly_data) |> set_names()
+# load data for initial season
+hourly_data <- load_data(index$path[index$season == initial_season]) |>
+  list() |>
+  set_names(initial_season)
+
+# load stations from disk as fallback before Wisconet update runs
+stns <- read_rds("data/stations.rds")
 
 # hourly_data[["2025-2026"]] <- hourly_data[["2025-2026"]] |>
 #   mutate(across(where(is.character), as.factor))
@@ -79,7 +85,7 @@ season_choices <- names(hourly_data) |> set_names()
 # Update from Wisconet ---------------------------------------------------------
 
 if (FALSE) {
-  last(hourly_data) |>
+  last(cached_data) |>
     count(dttm, station_id) |>
     # complete(nesting(station_id, collection_time), fill = list(n = 0)) |>
     # filter(n == 0)
@@ -142,35 +148,35 @@ build_hourly <- function(df) {
 # initialize api wrapper
 source("wisconet.R")
 
-# try to update stations as necessary
-tryCatch(
-  local({
-    wn <- Wisconet$new()
-    stns <<- wn$stations
-    stns |> write_rds("data/stations.rds")
+# Update hourly_data and stns from the Wisconet API.
+# Returns list(hourly_data, stns, season_choices) on success, NULL on failure.
+update_from_wisconet <- function(hourly_data, stns) {
+  tryCatch(
+    {
+      wn <- Wisconet$new()
+      stns <- wn$stations
+      stns |> write_rds("data/stations.rds")
 
-    # use the last 2 seasons to check for update needs
-    recent_data <- bind_rows(tail(hourly_data, n = 2))
+      # use the last 2 seasons to check for update needs
+      recent_data <- bind_rows(tail(hourly_data, n = 2))
 
-    # find the earliest date for the current season
-    date_seed <- tibble(
-      date = seq.Date(today() - months(6), today()),
-      season = calc_season(date)
-    ) |>
-      filter(season == last(season))
+      # find the earliest date for the current season
+      date_seed <- tibble(
+        date = seq.Date(today() - months(6), today()),
+        season = calc_season(date)
+      ) |>
+        filter(season == last(season))
 
-    # use as start_date for missing or new stations
-    fallback_start_date <- as_datetime(
-      min(date_seed$date),
-      tz = "America/Chicago"
-    )
+      # use as start_date for missing or new stations
+      fallback_start_date <- as_datetime(
+        min(date_seed$date),
+        tz = "America/Chicago"
+      )
 
-    # get most recent data times, falling back to fallback_start_date for missing stations
-    wn_status <- local({
-      if (length(hourly_data) == 0) {
+      # get most recent data times, falling back to fallback_start_date for missing stations
+      wn_status <- if (length(hourly_data) == 0) {
         tibble(station_id = stns$station_id, last_dttm = fallback_start_date)
       } else {
-        # stations in recent data
         known <- recent_data |>
           summarize(
             last_dttm = max(dttm) |> with_tz("America/Chicago"),
@@ -183,64 +189,78 @@ tryCatch(
         )
         bind_rows(known, new_stns)
       }
-    }) |>
-      mutate(age = as.numeric(now() - last_dttm, units = "hours")) |>
-      arrange(desc(age))
+      wn_status <- wn_status |>
+        mutate(age = as.numeric(now() - last_dttm, units = "hours")) |>
+        arrange(desc(age))
 
-    # find stations with stale data
-    stns_to_update <- wn_status |>
-      filter(age > 2)
+      # find stations with stale data
+      stns_to_update <- wn_status |> filter(age > 2)
 
-    if (nrow(stns_to_update) == 0) {
-      message("Everything up to date.")
-      return()
+      if (nrow(stns_to_update) == 0) {
+        message("Everything up to date.")
+        return(list(
+          hourly_data = hourly_data,
+          stns = stns,
+          season_choices = names(hourly_data) |> set_names()
+        ))
+      }
+
+      print(stns_to_update)
+
+      # update with new data using station-specific times
+      wn_new_data <- wn$get_measures_stations(
+        stn_ids = as.character(stns_to_update$station_id),
+        fields = select_measures$standard_name,
+        start_time = set_names(
+          stns_to_update$last_dttm + minutes(30),
+          stns_to_update$station_id
+        ),
+        end_time = now()
+      )
+
+      if (nrow(wn_new_data) == 0) {
+        message("Tried to get new data but received none!")
+        return(list(
+          hourly_data = hourly_data,
+          stns = stns,
+          season_choices = names(hourly_data) |> set_names()
+        ))
+      }
+
+      hourly_data_new <- build_hourly(wn_new_data)
+      seasons_updated <- as.character(unique(hourly_data_new$season))
+
+      # bind new data to existing data
+      wn_updated_data <- recent_data |>
+        filter(season %in% seasons_updated) |>
+        bind_rows(hourly_data_new) |>
+        arrange(station_id, collection_time, measure_id) |>
+        distinct(station_id, collection_time, measure_id, .keep_all = TRUE) |>
+        filter(measure_value > -50)
+
+      # split into files by season and update the local list
+      for (s in seasons_updated) {
+        df <- wn_updated_data |> filter(season == s)
+        hourly_data[[s]] <- df
+        write_fst(df, sprintf("data/%s.fst", s), compress = 99)
+      }
+
+      list(
+        hourly_data = hourly_data,
+        stns = stns,
+        season_choices = names(hourly_data) |> set_names()
+      )
+    },
+    error = function(e) {
+      message("Update from Wisconet failed: ", e$message)
+      NULL
     }
+  )
+}
 
-    print(stns_to_update)
-
-    # update with new data using station-specific times
-    wn_new_data <- wn$get_measures_stations(
-      stn_ids = as.character(stns_to_update$station_id),
-      fields = select_measures$standard_name,
-      start_time = set_names(
-        stns_to_update$last_dttm + minutes(30),
-        stns_to_update$station_id
-      ),
-      end_time = now()
-    )
-
-    if (nrow(wn_new_data) == 0) {
-      message("Tried to get new data but received none!")
-      return()
-    }
-
-    hourly_data_new <- build_hourly(wn_new_data)
-    seasons_updated <- as.character(unique(hourly_data_new$season))
-
-    # bind new data to existing data
-    wn_updated_data <- recent_data |>
-      filter(season %in% seasons_updated) |>
-      bind_rows(hourly_data_new) |>
-      arrange(station_id, collection_time, measure_id) |>
-      distinct(station_id, collection_time, measure_id, .keep_all = TRUE) |>
-      filter(measure_value > -50)
-
-    # split into files by season
-    lapply(seasons_updated, function(s) {
-      df <- wn_updated_data |> filter(season == s)
-      hourly_data[[s]] <<- df
-      fname <- sprintf("data/%s.fst", s)
-      write_fst(df, fname, compress = 99)
-    })
-
-    # update choices for interface
-    season_choices <<- names(hourly_data) |> set_names()
-  }),
-  error = function(e) {
-    message("Update from Wisconet failed: ", e$message)
-    stns <<- read_rds("data/stations.rds")
-  }
-)
+if (FALSE) {
+  result <- update_from_wisconet(hourly_data, stns)
+}
 
 
 # Volunteer risk calculation ---------------------------------------------------
@@ -250,6 +270,7 @@ tryCatch(
 #' High risk: 2in & 4in < 120 hours
 #' Moderate risk: 2in > 120 hours, 4in < 120 hours
 #' Low risk 2in & 4in > 120 hours
+risk_scores <- c("Very high", "High", "Moderate", "Low")
 calc_vol_risk <- function(data) {
   data |>
     summarize(
@@ -268,26 +289,18 @@ calc_vol_risk <- function(data) {
     ) |>
     mutate(
       risk_score = (killing2 >= 120) + (killing4 >= 120) + (killing8 >= 120),
-      risk = recode_values(
-        risk_score,
-        0 ~ "Very high",
-        1 ~ "High",
-        2 ~ "Moderate",
-        3 ~ "Low"
-      ) |>
-        factor(levels = c("Very high", "High", "Moderate", "Low"))
+      risk = map(risk_score, ~ risk_scores[.x + 1]) |>
+        factor(levels = risk_scores)
     ) |>
     arrange(season, station_id)
 }
 
 # calculate volunteer risk scores from hourly data
-vol_risk <- map(hourly_data, calc_vol_risk)
-
+# map(cached_data, calc_vol_risk)
 
 # Map --------------------------------------------------------------------------
 
-#' @param data:tibble volunteer_risk
-build_risk_map <- function(data) {
+build_map <- function() {
   btn1 <- easyButton(
     position = "topleft",
     # icon = "fa-location-pin",
@@ -307,17 +320,19 @@ build_risk_map <- function(data) {
     )
   )
 
-  data |>
-    leaflet(
-      options = leafletOptions(
-        zoomSnap = 0.25,
-        zoomDelta = 0.5
-      )
-    ) |>
+  risk <- fct_inorder(risk_scores)
+  leaflet(
+    options = leafletOptions(
+      zoomSnap = 0.25,
+      zoomDelta = 0.5
+    )
+  ) |>
     addProviderTiles(providers$OpenStreetMap, group = "OpenStreetMap") |>
     addProviderTiles(providers$Esri.WorldImagery, group = "Satellite") |>
     addLayersControl(baseGroups = c("OpenStreetMap", "Satellite")) |>
     addEasyButtonBar(btn1, btn2) |>
+    addMapPane("stations", 410) |>
+    addMapPane("selected", 420) |>
     addPolygons(
       data = wi_counties,
       color = "black",
@@ -326,32 +341,35 @@ build_risk_map <- function(data) {
       fillOpacity = .0001,
       label = ~ paste(county_name, "County")
     ) |>
-    add_risk_markers() |>
+    # add_risk_markers() |>
     addLegend(
       position = "bottomright",
-      pal = colorFactor("viridis", data$risk, reverse = TRUE),
-      values = data$risk,
+      pal = colorFactor("viridis", risk, reverse = TRUE),
+      values = risk,
       title = "Volunteer risk",
       opacity = 1
     ) |>
     fit_stns()
 }
 
-add_risk_markers <- function(map, data = getMapData(map)) {
-  addCircleMarkers(
-    map,
-    data = data,
-    lat = ~latitude,
-    lng = ~longitude,
-    layerId = ~station_id,
-    label = ~ str_glue("<b>{station_name}</b><br>Risk: {risk}") |>
-      lapply(HTML),
-    color = "black",
-    weight = 1,
-    opacity = 1,
-    fillColor = ~ colorFactor("viridis", risk, reverse = TRUE)(risk),
-    fillOpacity = 1
-  )
+add_risk_markers <- function(map, data) {
+  map |>
+    clearGroup("stations") |>
+    addCircleMarkers(
+      data = data,
+      lat = ~latitude,
+      lng = ~longitude,
+      layerId = ~station_id,
+      group = "stations",
+      label = ~ str_glue("<b>{station_name}</b><br>Risk: {risk}") |>
+        lapply(HTML),
+      color = "black",
+      weight = 1,
+      opacity = 1,
+      fillColor = ~ colorFactor("viridis", risk, reverse = TRUE)(risk),
+      fillOpacity = 1,
+      options = pathOptions(pane = "stations")
+    )
 }
 
 fit_stns <- function(map) {
@@ -365,6 +383,8 @@ fit_stns <- function(map) {
 }
 
 if (FALSE) {
+  build_map()
+
   df <- vol_risk[["2025-2026"]]
   df |> build_risk_map()
 
