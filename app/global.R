@@ -10,16 +10,18 @@ library(sf)
 
 suppressPackageStartupMessages({
   library(tidyverse)
-  library(leaflet)
-  library(leaflet.extras)
-  library(markdown)
+  library(fst)
+  library(mirai) # async
   library(shiny)
   library(shinyWidgets)
   library(bslib)
+  library(markdown)
+  library(leaflet)
+  library(leaflet.extras)
   library(plotly)
-  library(fst)
 })
 
+# dev tools
 if (FALSE) {
   remotes::install_github("https://github.com/trafficonese/leaflet.extras")
   # renv::install("sf@1.0-24")
@@ -31,16 +33,12 @@ if (FALSE) {
 
 options(shiny.fullstacktrace = FALSE)
 
-# Functions --------------------------------------------------------------------
+# set up the background worker for API requests
+daemons(1)
 
-find_closest <- function(lat, lon, df = stns) {
-  dists <- (df$latitude - lat)^2 + (df$longitude - lon)^2
-  df[which.min(dists), ]
-}
-# find_closest(45, -89)
+# Setup ------------------------------------------------------------------------
 
-# Load data --------------------------------------------------------------------
-
+TZ <- "America/Chicago"
 wi_counties <- read_rds("data/counties.rds")
 stns <- read_rds("data/stations.rds")
 
@@ -49,16 +47,12 @@ build_index <- function() {
   tibble(
     path = list.files("data", "\\.fst$", full.names = TRUE),
     file = basename(path),
-    season = tools::file_path_sans_ext(file),
-    winter = grepl("-", season)
+    last_updated = file.mtime(path),
+    season = tools::file_path_sans_ext(file)
   ) |>
     arrange(season) |>
     mutate(id = row_number(), .before = 1)
 }
-
-index <- build_index()
-season_choices <- set_names(index$season)
-initial_season <- index$season[max(which(index$winter == TRUE))]
 
 # data loader function
 load_data <- function(path) {
@@ -68,17 +62,13 @@ load_data <- function(path) {
   }
   read_fst(path) |>
     as_tibble() |>
-    mutate(dttm_local = with_tz(dttm, "America/Chicago"), .after = dttm) |>
+    mutate(dttm_local = with_tz(dttm, TZ), .after = dttm) |>
     filter(measure_value > -50)
 }
 
-# load data for initial season
-hourly_data <- load_data(index$path[index$season == initial_season]) |>
-  list() |>
-  set_names(initial_season)
-
-# hourly_data[["2025-2026"]] <- hourly_data[["2025-2026"]] |>
-#   mutate(across(where(is.character), as.factor))
+# create index and season choices for UI
+index <- build_index()
+season_choices <- set_names(index$season)
 
 # Update from Wisconet ---------------------------------------------------------
 
@@ -92,15 +82,17 @@ select_measures <- tribble(
 )
 
 # determines the season names for a vector of dates, eg '2025', '2025-2026'
+# season starts Oct 1
 calc_season <- function(date) {
-  d <- lubridate::yday(date)
+  m <- lubridate::month(date)
   yr <- lubridate::year(date)
-  case_when(
-    d >= 300 ~ sprintf("%d-%d", yr, yr + 1),
-    d <= 90 ~ sprintf("%d-%d", yr - 1, yr),
-    TRUE ~ as.character(yr)
+  if_else(
+    m >= 10,
+    sprintf("%d-%d", yr, yr + 1),
+    sprintf("%d-%d", yr - 1, yr)
   )
 }
+# calc_season(today())
 
 # select and process raw wisconet data
 build_hourly <- function(df) {
@@ -117,12 +109,7 @@ build_hourly <- function(df) {
       standard_name,
       measure_value
     ) |>
-    mutate(
-      year = year(date),
-      yday = yday(date),
-      season = calc_season(date),
-      .after = date
-    ) |>
+    mutate(season = calc_season(date), .after = date) |>
     mutate(
       freezing = measure_value < 32,
       killing = measure_value < 27
@@ -131,121 +118,96 @@ build_hourly <- function(df) {
     mutate(across(where(is.character), as.factor))
 }
 
-# initialize api wrapper
-source("wisconet.R")
+#' Update fst files with new data from Wisconet
+#' @returns `seasons_updated` or `NULL`
+update_from_wisconet <- function(
+  file_index = build_index(),
+  data_loader = load_data
+) {
+  require(tidyverse)
+  require(fst)
+  source("wisconet.R")
 
-# Update hourly_data and stns from the Wisconet API.
-# Returns list(hourly_data, stns, season_choices) on success, NULL on failure.
-update_from_wisconet <- function(hourly_data, stns) {
-  tryCatch(
-    {
-      wn <- Wisconet$new()
-      stns <- wn$stations
-      stns |> write_rds("data/stations.rds")
+  # initialize
+  wn <- Wisconet$new()
 
-      # use the last 2 seasons to check for update needs
-      recent_data <- bind_rows(tail(hourly_data, n = 2))
+  # save updated stations list
+  stns <- wn$stations
+  stns |> write_rds("data/stations.rds")
 
-      # find the earliest date for the current season
-      date_seed <- tibble(
-        date = seq.Date(today() - months(6), today()),
-        season = calc_season(date)
-      ) |>
-        filter(season == last(season))
+  # set earliest date
+  MIN_DATE <- as_date("2025-10-1") # start of winter season
+  MIN_DTTM <- as_datetime(MIN_DATE, tz = TZ)
 
-      # use as start_date for missing or new stations
-      fallback_start_date <- as_datetime(
-        min(date_seed$date),
-        tz = "America/Chicago"
+  # load most recent 2 seasons from index
+  if (length(file_index) == 0) {
+    recent_data <- tibble()
+    wn_status <- tibble(
+      station_id = stns$station_id,
+      last_dttm = MIN_DTTM,
+      age = Inf
+    )
+  } else {
+    recent_data <- tail(file_index$path, 2) |>
+      lapply(data_loader) |>
+      bind_rows()
+    known_stns <- recent_data |>
+      summarize(
+        last_dttm = with_tz(max(dttm), TZ),
+        .by = station_id
       )
+    wn_status <- stns |>
+      select(station_id) |>
+      left_join(known_stns, join_by(station_id)) |>
+      replace_na(list(last_dttm = MIN_DTTM)) |>
+      mutate(age = as.numeric(now() - last_dttm, units = "hours")) |>
+      arrange(desc(age))
+  }
 
-      # get most recent data times, falling back to fallback_start_date for missing stations
-      wn_status <- if (length(hourly_data) == 0) {
-        tibble(station_id = stns$station_id, last_dttm = fallback_start_date)
-      } else {
-        known <- recent_data |>
-          summarize(
-            last_dttm = max(dttm) |> with_tz("America/Chicago"),
-            .by = station_id
-          )
-        # any stations with no history at all get fallback_start_date
-        new_stns <- tibble(
-          station_id = setdiff(stns$station_id, known$station_id),
-          last_dttm = fallback_start_date
-        )
-        bind_rows(known, new_stns)
-      }
-      wn_status <- wn_status |>
-        mutate(age = as.numeric(now() - last_dttm, units = "hours")) |>
-        arrange(desc(age))
+  # find stations with stale data
+  stns_to_update <- wn_status |> filter(age > 2)
 
-      # find stations with stale data
-      stns_to_update <- wn_status |> filter(age > 2)
+  if (nrow(stns_to_update) == 0) {
+    message("Everything up to date.")
+    return(invisible())
+  }
 
-      if (nrow(stns_to_update) == 0) {
-        message("Everything up to date.")
-        return(list(
-          hourly_data = hourly_data,
-          stns = stns,
-          season_choices = names(hourly_data) |> set_names()
-        ))
-      }
-
-      print(stns_to_update)
-
-      # update with new data using station-specific times
-      wn_new_data <- wn$get_measures_stations(
-        stn_ids = as.character(stns_to_update$station_id),
-        fields = select_measures$standard_name,
-        start_time = set_names(
-          stns_to_update$last_dttm + minutes(30),
-          stns_to_update$station_id
-        ),
-        end_time = now()
-      )
-
-      if (nrow(wn_new_data) == 0) {
-        message("Tried to get new data but received none!")
-        return(list(
-          hourly_data = hourly_data,
-          stns = stns,
-          season_choices = names(hourly_data) |> set_names()
-        ))
-      }
-
-      hourly_data_new <- build_hourly(wn_new_data)
-      seasons_updated <- as.character(unique(hourly_data_new$season))
-
-      # bind new data to existing data
-      wn_updated_data <- recent_data |>
-        filter(season %in% seasons_updated) |>
-        bind_rows(hourly_data_new) |>
-        arrange(station_id, collection_time, measure_id) |>
-        distinct(station_id, collection_time, measure_id, .keep_all = TRUE) |>
-        filter(measure_value > -50)
-
-      # split into files by season and update the local list
-      for (s in seasons_updated) {
-        df <- wn_updated_data |> filter(season == s)
-        hourly_data[[s]] <- df
-        write_fst(df, sprintf("data/%s.fst", s), compress = 99)
-      }
-
-      list(
-        hourly_data = hourly_data,
-        stns = stns,
-        season_choices = names(hourly_data) |> set_names()
-      )
-    },
-    error = function(e) {
-      message("Update from Wisconet failed: ", e$message)
-      NULL
-    }
+  # update with new data using station-specific times
+  wn_new_data <- wn$get_measures_stations(
+    stn_ids = as.character(stns_to_update$station_id),
+    fields = select_measures$standard_name,
+    start_time = set_names(
+      stns_to_update$last_dttm + minutes(30),
+      stns_to_update$station_id
+    ),
+    end_time = now()
   )
-}
 
-if (FALSE) {
-  result <- update_from_wisconet(hourly_data, stns)
+  if (nrow(wn_new_data) == 0) {
+    message("Tried to get new data but received none!")
+    return(invisible())
+  }
+
+  # process new data
+  hourly_data_new <- build_hourly(wn_new_data)
+  seasons_updated <- as.character(unique(hourly_data_new$season))
+
+  # bind new data to existing data
+  wn_updated_data <- recent_data |>
+    bind_rows(hourly_data_new) |>
+    filter(season %in% seasons_updated) |>
+    arrange(station_id, collection_time, measure_id) |>
+    distinct(station_id, collection_time, measure_id, .keep_all = TRUE) |>
+    filter(measure_value > -50)
+
+  # split into files by season and update the cache
+  for (s in seasons_updated) {
+    wn_updated_data |>
+      filter(season == s) |>
+      write_fst(sprintf("data/%s.fst", s), compress = 99)
+  }
+
+  return(seasons_updated)
 }
 
 
@@ -285,6 +247,12 @@ calc_vol_risk <- function(data) {
 # map(cached_data, calc_vol_risk)
 
 # Map --------------------------------------------------------------------------
+
+find_closest <- function(lat, lon, df = stns) {
+  dists <- (df$latitude - lat)^2 + (df$longitude - lon)^2
+  df[which.min(dists), ]
+}
+# find_closest(45, -89)
 
 build_map <- function() {
   btn1 <- easyButton(
@@ -551,15 +519,16 @@ build_plot <- function(data) {
 }
 
 if (FALSE) {
-  hourly_data |>
+  data <- load_data(last(index$path))
+  data |>
     filter(station_id == "HNCK", depth == 2) |>
     build_plot()
 
-  hourly_data |>
+  data |>
     filter(station_id == "HNCK", depth == 0) |>
     build_plot()
 
-  hourly_data |>
+  data |>
     filter(station_id == "HNCK", depth > 0) |>
     build_plot()
 }

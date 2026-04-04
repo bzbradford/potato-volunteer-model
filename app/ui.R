@@ -40,7 +40,7 @@ ui <- page_fillable(
     div(
       style = "font-size: small;",
       HTML(
-        "Potato volunteers are tubers left in the field after harvest which may survive the winter and grow during the following season. The tubers themselves may harbor pests and diseases, and the plants that grow from these tubers may increase the risk of serious diseases including late blight (<i>Phytophthora infestans</i>). Using weather data from Wisconet, this app illustrates soil temperatures and the associated risk of potato tuber overwintering. Note: Actual soil temperature may vary from station readings due to presence/absence of snow on fields. Risk only applies to winter seasons, summer weather included for informational purposes only."
+        "Potato volunteers are tubers left in the field after harvest which may survive the winter and grow during the following season. The tubers themselves may harbor pests and diseases, and the plants that grow from these tubers may increase the risk of serious diseases including late blight (<i>Phytophthora infestans</i>). Using weather data from Wisconet, this app illustrates soil temperatures and the associated risk of potato tuber overwintering. Note: Actual soil temperature may vary from station readings due to presence/absence of snow on fields or other factors. Season resets Oct 1."
       )
     ),
     div(
@@ -53,7 +53,7 @@ ui <- page_fillable(
         inputId = "season",
         label = NULL,
         choices = season_choices,
-        selected = initial_season,
+        selected = last(season_choices),
         size = "sm",
         individual = TRUE
       )

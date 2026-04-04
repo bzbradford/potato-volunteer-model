@@ -2,7 +2,7 @@
 '$schema' = 'https://cdn.posit.co/publisher/schemas/posit-publishing-record-schema-v3.json'
 server_type = 'connect'
 server_url = 'https://connect.doit.wisc.edu'
-client_version = '1.37.3'
+client_version = '1.37.7'
 created_at = '2026-03-27T19:56:15-05:00'
 dismissed_at = ''
 type = 'r-shiny'
@@ -11,18 +11,16 @@ id = '81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0'
 dashboard_url = 'https://connect.doit.wisc.edu/connect/#/apps/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0'
 direct_url = 'https://connect.doit.wisc.edu/content/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/'
 logs_url = 'https://connect.doit.wisc.edu/connect/#/apps/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/logs'
-deployed_at = '2026-03-27T20:46:30-05:00'
-bundle_id = '4656'
-bundle_url = 'https://connect.doit.wisc.edu/__api__/v1/content/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/bundles/4656/download'
+deployed_at = '2026-04-04T00:57:02-05:00'
+bundle_id = '4682'
+bundle_url = 'https://connect.doit.wisc.edu/__api__/v1/content/81bc51f9-3c5d-4cf0-a1d0-e48d06179ca0/bundles/4682/download'
 files = [
   '.posit/publish/Potato volunteer risk map-P48A.toml',
   '.posit/publish/deployments/deployment-7R66.toml',
   'about.md',
   'data/2023-2024.fst',
   'data/2024-2025.fst',
-  'data/2024.fst',
   'data/2025-2026.fst',
-  'data/2025.fst',
   'data/counties.rds',
   'data/stations.rds',
   'global.R',
@@ -1761,6 +1759,30 @@ encoding = 'UTF-8'
 needscompilation = 'yes'
 author = 'Yihui Xie [aut, cre] (<https://orcid.org/0000-0003-0645-5666>, https://yihui.org), Jeffrey Horner [ctb], Beilei Bian [ctb]'
 
+[renv.packages.mirai]
+package = 'mirai'
+version = '2.6.1'
+source = 'Repository'
+repository = 'PPM'
+depends = ['R (>= 3.6)']
+hash = ''
+type = 'Package'
+title = 'Minimalist Async Evaluation Framework for R'
+'authors@r' = 'c( person("Charlie", "Gao", , "charlie.gao@posit.co", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-0750-061X")), person("Joe", "Cheng", , "joe@posit.co", role = "ctb"), person("Posit Software, PBC", role = c("cph", "fnd"), comment = c(ROR = "03wc8by49")), person("Hibiki AI Limited", role = "cph") )'
+maintainer = 'Charlie Gao <charlie.gao@posit.co>'
+description = "Evaluates R expressions asynchronously and in parallel, locally or distributed across networks. An official parallel cluster type for R. Built on 'nanonext' and 'NNG', its non-polling, event-driven architecture scales from a laptop to thousands of processes across high-performance computing clusters and cloud platforms.  Features FIFO scheduling with task cancellation, promises for reactive programming, 'OpenTelemetry' distributed tracing, and custom serialization for cross-language data types."
+url = 'https://mirai.r-lib.org, https://github.com/r-lib/mirai'
+bugreports = 'https://github.com/r-lib/mirai/issues'
+license = 'MIT + file LICENSE'
+imports = ['nanonext (>= 1.8.0)']
+suggests = ['cli', 'later', 'litedown', 'otel', 'otelsdk', 'secretbase']
+vignettebuilder = 'litedown'
+roxygennote = '7.3.3'
+encoding = 'UTF-8'
+needscompilation = 'no'
+author = 'Charlie Gao [aut, cre] (ORCID: <https://orcid.org/0000-0002-0750-061X>), Joe Cheng [ctb], Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>), Hibiki AI Limited [cph]'
+'config/needs/website' = 'tidyverse/tidytemplate'
+
 [renv.packages.modelr]
 package = 'modelr'
 version = '0.1.11'
@@ -1783,6 +1805,30 @@ needscompilation = 'no'
 author = 'Hadley Wickham [aut, cre], Posit Software, PBC [cph, fnd]'
 'config/testthat/edition' = '3'
 'config/needs/website' = 'tidyverse/tidytemplate'
+
+[renv.packages.nanonext]
+package = 'nanonext'
+version = '1.8.1'
+source = 'Repository'
+repository = 'PPM'
+depends = ['R (>= 3.6)']
+hash = ''
+type = 'Package'
+title = 'Lightweight Toolkit for Messaging, Concurrency and the Web'
+'authors@r' = 'c( person("Charlie", "Gao", , "charlie.gao@posit.co", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-0750-061X")), person("Posit Software, PBC", role = c("cph", "fnd"), comment = c(ROR = "03wc8by49")), person("Hibiki AI Limited", role = "cph"), person("R Consortium", role = "fnd", comment = c(ROR = "01z833950")) )'
+maintainer = 'Charlie Gao <charlie.gao@posit.co>'
+description = "R binding for NNG (Nanomsg Next Gen), a successor to ZeroMQ. A toolkit for messaging, concurrency and the web. High-performance socket messaging over in-process, IPC, TCP, WebSocket and secure TLS transports implements 'Scalability Protocols', a standard for common communications patterns including publish/subscribe, request/reply and survey. A threaded concurrency framework with intuitive 'aio' objects that resolve automatically upon completion of asynchronous operations, and synchronisation primitives that allow R to wait on events signalled by concurrent threads. A unified HTTP server hosting REST endpoints, WebSocket connections and streaming on a single port, with a built-in HTTP client."
+url = 'https://nanonext.r-lib.org, https://github.com/r-lib/nanonext'
+bugreports = 'https://github.com/r-lib/nanonext/issues'
+license = 'MIT + file LICENSE'
+suggests = ['later', 'litedown']
+vignettebuilder = 'litedown'
+roxygennote = '7.3.3'
+encoding = 'UTF-8'
+needscompilation = 'yes'
+author = 'Charlie Gao [aut, cre] (ORCID: <https://orcid.org/0000-0002-0750-061X>), Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>), Hibiki AI Limited [cph], R Consortium [fnd] (ROR: <https://ror.org/01z833950>)'
+'config/needs/website' = 'tidyverse/tidytemplate'
+systemrequirements = "'libnng' >= 1.9 and 'libmbedtls' >= 2.5, or 'cmake' to compile NNG and/or Mbed TLS included in package sources"
 
 [renv.packages.openssl]
 package = 'openssl'

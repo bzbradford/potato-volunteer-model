@@ -1,8 +1,7 @@
-library(R6)
-library(tidyverse)
-library(httr2)
+require(tidyverse)
+require(httr2)
 
-Wisconet <- R6Class(
+Wisconet <- R6::R6Class(
   "Wisconet",
   private = list(
     api_url = "https://wisconet.wisc.edu/api/v1",
@@ -20,6 +19,8 @@ Wisconet <- R6Class(
           end_time = private$time_to_gmt(end_time),
           fields = paste(fields, collapse = ",")
         ) |>
+        req_throttle(capacity = 60, fill_time_s = 60) |>
+        req_retry(max_tries = 5) |>
         req_error(is_error = ~FALSE)
     },
 
@@ -170,8 +171,7 @@ Wisconet <- R6Class(
       stn_ids,
       fields,
       start_time,
-      end_time = now(),
-      max_reqs_per_sec = 10
+      end_time = now()
     ) {
       private$validate_inputs(stn_ids, fields)
 
@@ -194,10 +194,15 @@ Wisconet <- R6Class(
         reqs,
         on_error = "continue",
         progress = "Fetching station data",
-        max_active = max_reqs_per_sec
+        max_active = 10
       )
 
-      results <- map2(resps, stn_ids, ~ private$parse_response(.x, .y), .progress = "Parsing responses")
+      results <- map2(
+        resps,
+        stn_ids,
+        ~ private$parse_response(.x, .y),
+        .progress = "Parsing responses"
+      )
       combined <- bind_rows(results)
 
       elapsed <- as.numeric(difftime(now(), t, units = "secs"))

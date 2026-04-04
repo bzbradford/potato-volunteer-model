@@ -6,10 +6,8 @@ server <- function(input, output, session) {
   ## rv ----
   rv <- reactiveValues(
     selected_stn = "HNCK",
-    hourly_data = hourly_data,
-    season_choices = season_choices,
-    updating = NULL,
-    update_time = NULL
+    hourly_data = list(),
+    status = NULL
   )
 
   ## season_data ----
@@ -76,27 +74,47 @@ server <- function(input, output, session) {
 
   # Wisconet update ------------------------------------------------------------
 
-  # trigger update when app is ready
-  observeEvent(TRUE, {
-    rv$updating <- TRUE
+  # background task to get new data
+  updater_task <- ExtendedTask$new(function() {
+    mirai(update_from_wisconet(), .GlobalEnv)
   })
 
-  # update from Wisconet
+  # invoke on app load
+  observeEvent(TRUE, {
+    rv$status <- "Updating from Wisconet..."
+    updater_task$invoke()
+  })
+
+  # handle task resolution by clearing any updated seasons, triggering reload
   observe({
-    data <- rv$hourly_data
-    result <- update_from_wisconet(data, stns)
-    if (!is.null(result)) {
-      rv$hourly_data <- result$hourly_data
-      rv$season_choices <- unique(c(
-        rv$season_choices,
-        result$season_choices
-      ))
-      stns <<- result$stns
-    }
-    rv$updating <- FALSE
-    rv$update_time <- now()
+    switch(
+      updater_task$status(),
+      "success" = {
+        # capture updated seasons from task
+        res <- updater_task$result()
+
+        # clear those seasons triggering data reload
+        lapply(res, function(season) {
+          rv$hourly_data[[season]] <- NULL
+        })
+
+        # set status
+        rv$status <- paste(
+          "Data updated:",
+          format(now(TZ), "%Y-%m-%d %I:%M %p %Z")
+        )
+      },
+      "error" = {
+        tryCatch(
+          updater_task$result(),
+          error = function(e) {
+            rv$status <- paste("Data update failed:", e$message)
+          }
+        )
+      }
+    )
   }) |>
-    bindEvent(rv$updating, once = TRUE)
+    bindEvent(updater_task$status())
 
   # Modal popup handler --------------------------------------------------------
 
@@ -128,9 +146,8 @@ server <- function(input, output, session) {
 
   ## Zoom button handler ----
   observe({
-    action <- req(input$map_btn)
     switch(
-      action,
+      req(input$map_btn),
       "zoom" = {
         stn <- stn_risk()
         leafletProxy("map") |>
@@ -224,12 +241,18 @@ server <- function(input, output, session) {
           station_name,
           latitude,
           longitude,
-          dttm_local,
+          dttm = dttm_local,
           standard_name,
           measure_value
         )) |>
         pivot_wider(names_from = standard_name, values_from = measure_value) |>
-        mutate(across(dttm_local, as.character)) |>
+        mutate(
+          date = format(dttm, "%Y-%m-%d"),
+          date_mdy = format(dttm, "%m/%d/%Y"),
+          hour = hour(dttm),
+          .after = dttm
+        ) |>
+        mutate(across(dttm, format)) |>
         write_csv(file, na = "", append = TRUE, col_names = TRUE)
     }
   )
@@ -277,16 +300,9 @@ server <- function(input, output, session) {
 
   ## update_status ----
   output$update_status <- renderUI({
-    if (isTRUE(rv$updating)) {
-      span(
-        style = "font-style: italic; color: grey;",
-        "Updating data from Wisconet..."
-      )
-    } else if (!is.null(rv$update_time)) {
-      span(
-        style = "font-style: italic; color: grey;",
-        paste("Data updated:", format(rv$update_time, "%I:%M %p"))
-      )
-    }
+    span(
+      style = "font-style: italic; color: grey;",
+      req(rv$status)
+    )
   })
 } # end server
