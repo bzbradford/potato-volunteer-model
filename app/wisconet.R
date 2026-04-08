@@ -19,7 +19,7 @@ Wisconet <- R6::R6Class(
           end_time = private$time_to_gmt(end_time),
           fields = paste(fields, collapse = ",")
         ) |>
-        req_throttle(capacity = 60, fill_time_s = 60) |>
+        req_throttle(capacity = 20, fill_time_s = 20) |>
         req_retry(max_tries = 5) |>
         req_error(is_error = ~FALSE)
     },
