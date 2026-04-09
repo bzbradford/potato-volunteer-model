@@ -23,7 +23,8 @@ suppressPackageStartupMessages({
 
 # dev tools
 if (FALSE) {
-  remotes::install_github("https://github.com/trafficonese/leaflet.extras")
+  remotes::install_github("bzbradford/rwisconet")
+  # remotes::install_github("https://github.com/trafficonese/leaflet.extras")
   # renv::install("sf@1.0-24")
   renv::init()
   renv::clean()
@@ -126,7 +127,7 @@ update_from_wisconet <- function(
 ) {
   require(tidyverse)
   require(fst)
-  source("wisconet.R")
+  require(rwisconet)
 
   # initialize
   wn <- Wisconet$new()
